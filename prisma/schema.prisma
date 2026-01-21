@@ -1,0 +1,191 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model User {
+  id            String        @id @default(cuid())
+  email         String        @unique
+  name          String?
+  supabaseId    String        @unique
+  emailVerified DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  clients       Client[]
+  invoices      Invoice[]
+  quotes        Quote[]
+  subscription  Subscription?
+  transactions  Transaction[]
+  profile       UserProfile?
+
+  @@index([supabaseId])
+  @@index([email])
+  @@map("user")
+}
+
+model UserProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  displayName       String?
+  country           String   @default("GB")
+  currency          String   @default("GBP")
+  units             String   @default("metric")
+  tradeType         String?
+  businessName      String?
+  businessAddress   String?
+  businessPhone     String?
+  businessEmail     String?
+  businessLogo      String?
+  dailyRate         Float?
+  monthlyRate       Float?
+  labourTierDefault String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  role              String?  @default("staff")
+  business_id       String?  @db.Uuid
+  client_id         String?  @db.Uuid
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([business_id], map: "idx_user_profile_business_id")
+  @@index([client_id], map: "idx_user_profile_client_id")
+  @@index([role], map: "idx_user_profile_role")
+  @@map("user_profile")
+}
+
+model Subscription {
+  id                       String    @id @default(cuid())
+  userId                   String    @unique
+  tier                     String    @default("free")
+  status                   String    @default("active")
+  stripeCustomerId         String?   @unique
+  stripeSubscriptionId     String?   @unique
+  stripePriceId            String?
+  currentPeriodStart       DateTime?
+  currentPeriodEnd         DateTime?
+  cancelledAt              DateTime?
+  quotesCreatedThisMonth   Int       @default(0)
+  invoicesCreatedThisMonth Int       @default(0)
+  lastCountResetDate       DateTime  @default(now())
+  createdAt                DateTime  @default(now())
+  updatedAt                DateTime  @updatedAt
+  user                     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([stripeCustomerId])
+  @@index([status])
+  @@map("subscription")
+}
+
+model Client {
+  id        String    @id @default(cuid())
+  userId    String
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  invoices  Invoice[]
+  quotes    Quote[]
+
+  @@unique([userId, email])
+  @@index([userId])
+  @@map("client")
+}
+
+model Quote {
+  id               String    @id @default(cuid())
+  userId           String
+  clientId         String?
+  quoteNumber      String    @unique
+  title            String
+  description      String?
+  subtotal         Float
+  tax              Float?
+  total            Float
+  items            Json
+  includeWatermark Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  expiresAt        DateTime?
+  pdfUrl           String?
+  client           Client?   @relation(fields: [clientId], references: [id])
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([createdAt])
+  @@map("quote")
+}
+
+model Invoice {
+  id               String    @id @default(cuid())
+  userId           String
+  clientId         String?
+  invoiceNumber    String    @unique
+  title            String?
+  description      String?
+  subtotal         Float
+  tax              Float?
+  total            Float
+  items            Json
+  includeWatermark Boolean   @default(false)
+  status           String    @default("draft")
+  dueDate          DateTime?
+  paidDate         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  pdfUrl           String?
+  client           Client?   @relation(fields: [clientId], references: [id])
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([clientId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("invoice")
+}
+
+model PricingProfile {
+  id            String   @id @default(cuid())
+  userId        String
+  name          String
+  rateType      String
+  dailyRate     Float?
+  monthlyRate   Float?
+  pricingMethod String   @default("breakdown")
+  isDefault     Boolean  @default(false)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([userId])
+  @@map("pricing_profile")
+}
+
+model Transaction {
+  id            String   @id @default(cuid())
+  userId        String
+  date          DateTime
+  type          String
+  category      String
+  description   String
+  amount        Float
+  referenceId   String?
+  referenceType String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([date])
+  @@index([type])
+  @@index([userId, date])
+  @@map("transaction")
+}
