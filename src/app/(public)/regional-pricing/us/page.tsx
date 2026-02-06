@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'US Construction Pricing - Coming Soon | BUILDR',
+  title: 'US Construction Pricing - Coming Soon | TISSCA',
   description: 'US construction pricing guide coming soon. Different pricing system, regional variations, and contractor rates.',
   keywords: 'US construction costs, American construction pricing, coming soon',
 };

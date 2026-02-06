@@ -4,6 +4,7 @@ import React, { ReactNode, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { getSupabaseClient } from '@/lib/supabase';
+import { brandConfig } from '@/config/brand';
 import { useEffect } from 'react';
 
 interface DashboardNavItem {
@@ -56,7 +57,7 @@ export function DashboardShell({
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push('/sign-in');
+    router.push('/login');
   };
 
   if (loading) {
@@ -81,9 +82,11 @@ export function DashboardShell({
         <div className="flex h-16 items-center justify-between border-b px-4">
           <div className={`flex items-center gap-2 ${!sidebarOpen && 'hidden'}`}>
             <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-600">
-              <span className="text-sm font-bold text-white">B</span>
+              <span className="text-sm font-bold text-white">
+                {brandConfig.displayName.charAt(0)}
+              </span>
             </div>
-            <span className="font-semibold text-gray-900">BUILDR</span>
+            <span className="font-semibold text-gray-900">{brandConfig.displayName}</span>
           </div>
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}

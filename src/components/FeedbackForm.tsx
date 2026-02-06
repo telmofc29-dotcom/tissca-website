@@ -82,7 +82,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
       <div className="p-6 text-center">
         <div className="text-4xl mb-4">✅</div>
         <h3 className="text-lg font-bold text-slate-900 mb-2">Thank You!</h3>
-        <p className="text-gray-600 text-sm">Your feedback has been received and will help us improve BUILDR.</p>
+        <p className="text-gray-600 text-sm">Your feedback has been received and will help us improve TISSCA.</p>
         {email && <p className="text-xs text-gray-500 mt-4">We'll contact you at {email} if you need a response.</p>}
       </div>
     );

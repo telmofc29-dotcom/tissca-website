@@ -6,7 +6,7 @@
 /**
  * Subscription tier
  */
-export type SubscriptionTier = 'free' | 'premium';
+export type SubscriptionTier = 'free' | 'pro' | 'team';
 
 /**
  * Subscription status
@@ -80,7 +80,18 @@ export const FEATURE_ACCESS: Record<SubscriptionTier, FeatureKey[]> = {
     'generate_quotes',
     'generate_invoices',
   ],
-  premium: [
+  pro: [
+    'view_public_content',
+    'save_calculator_results',
+    'generate_quotes',
+    'generate_invoices',
+    'upload_business_logo',
+    'remove_watermark',
+    'access_mobile_app',
+    'save_clients',
+    'view_no_ads',
+  ],
+  team: [
     'view_public_content',
     'save_calculator_results',
     'generate_quotes',

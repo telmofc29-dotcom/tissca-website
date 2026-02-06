@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Site Setup & Cleanup Costs - Construction Site Preparation | BUILDR',
+  title: 'Site Setup & Cleanup Costs - Construction Site Preparation | TISSCA',
   description: 'Understand site setup and cleanup costs. Protection, hoarding, waste removal, and restoration expenses explained.',
   keywords: 'site setup, cleanup costs, waste removal, site protection, hoarding',
 };

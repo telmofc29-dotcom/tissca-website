@@ -252,12 +252,12 @@ export function exportFeedbackToCSV(feedback: FeedbackSubmission[]): string {
 export const BOT_QUESTIONS: Record<FeedbackType, string[]> = {
   help: [
     'What are you trying to do?',
-    'Which part of BUILDR are you using?',
+    'Which part of TISSCA are you using?',
     'Can you describe what happened?',
   ],
   issue: [
     'What went wrong?',
-    'Which part of BUILDR?',
+    'Which part of TISSCA?',
     'Can you describe the issue in detail?',
     'What did you expect to happen?',
   ],

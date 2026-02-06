@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Project Overhead & Management Costs - Business Expenses | BUILDR',
+  title: 'Project Overhead & Management Costs - Business Expenses | TISSCA',
   description: 'Understand project overhead and management costs. Why contractors charge for more than just labour and materials.',
   keywords: 'project overhead, management fees, business costs, contractor pricing',
 };

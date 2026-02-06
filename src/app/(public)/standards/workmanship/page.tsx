@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Professional Workmanship Standards | BUILDR',
+  title: 'Professional Workmanship Standards | TISSCA',
   description: 'What professional workmanship looks like. Quality standards by tier. How to inspect finished work and identify poor workmanship.',
   keywords: 'workmanship standards, professional work, quality standards, construction quality',
 };

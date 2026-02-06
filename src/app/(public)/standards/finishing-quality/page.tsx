@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Finishing Quality Standards | BUILDR',
+  title: 'Finishing Quality Standards | TISSCA',
   description: 'Quality expectations for finishes by tier. What good, acceptable, and poor finishes look like. How to inspect finish quality.',
   keywords: 'finishing quality, finish standards, interior finishes, quality expectations',
 };

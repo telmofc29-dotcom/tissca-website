@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Wardrobe Fitting Costs UK - Built-In Wardrobes & Installations | BUILDR',
+  title: 'Wardrobe Fitting Costs UK - Built-In Wardrobes & Installations | TISSCA',
   description: 'Understand UK wardrobe fitting costs. Built-in wardrobes, sliding doors, and installation labour explained.',
   keywords: 'wardrobe costs, built-in wardrobes, fitted wardrobes, wardrobe installation, wardrobe labour',
 };

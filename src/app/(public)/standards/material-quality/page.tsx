@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Material Quality Standards | BUILDR',
+  title: 'Material Quality Standards | TISSCA',
   description: 'Understanding material grades, quality tiers, durability, and lifecycle costs. What materials last and why quality matters.',
   keywords: 'material quality, material grades, durability, construction materials, material standards',
 };

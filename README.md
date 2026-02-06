@@ -1,10 +1,10 @@
-# BUILDR - Construction Authority Platform
+# TISSCA - Construction Authority Platform
 
 A world-class, content-heavy construction education platform designed to become the global reference for construction standards, workmanship quality, cost breakdowns, and professional guidance.
 
 ## 🎯 Vision
 
-BUILDR is not a blog or landing page. It's a long-term digital asset built to:
+TISSCA is not a blog or landing page. It's a long-term digital asset built to:
 - Educate homeowners, tradespeople, and students
 - Establish professional construction authority
 - Provide honest cost and quality information
@@ -241,8 +241,8 @@ To be determined.
 
 ## 📞 Contact
 
-Email: hello@buildr.com
+Email: hello@tissca.com
 
 ---
 
-**BUILDR - Building the construction authority, one guide at a time.**
+**TISSCA - Building the construction authority, one guide at a time.**

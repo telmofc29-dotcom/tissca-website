@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Roofing Costs UK - Roofer Labour Rates & Material Expenses | BUILDR',
+  title: 'Roofing Costs UK - Roofer Labour Rates & Material Expenses | TISSCA',
   description: 'Understand UK roofing costs. Roofer labour rates (£120-220/day), material costs, and what affects pricing.',
   keywords: 'roofing costs, UK roofer rates, roof repairs, roof replacement, roofing materials',
 };

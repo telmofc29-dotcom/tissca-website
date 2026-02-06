@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Construction Safety Requirements | BUILDR',
+  title: 'Construction Safety Requirements | TISSCA',
   description: 'Health and safety standards, PPE requirements, site safety regulations, and contractor responsibilities in construction.',
   keywords: 'construction safety, health and safety, PPE, site safety, safety standards',
 };

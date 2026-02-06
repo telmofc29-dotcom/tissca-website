@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'UK Regional Construction Pricing - Regional Price Variations | BUILDR',
+  title: 'UK Regional Construction Pricing - Regional Price Variations | TISSCA',
   description: 'Understand how construction costs vary across UK regions. London, South East, regional differences explained.',
   keywords: 'UK construction pricing, regional pricing, London construction costs, regional variations',
 };

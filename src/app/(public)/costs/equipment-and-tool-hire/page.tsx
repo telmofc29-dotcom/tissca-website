@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Equipment & Tool Hire Costs - Construction Equipment Pricing | BUILDR',
+  title: 'Equipment & Tool Hire Costs - Construction Equipment Pricing | TISSCA',
   description: 'Understand equipment and tool hire costs in construction. Scaffolding, access equipment, and specialized tool costs explained.',
   keywords: 'equipment hire, tool rental, scaffolding costs, construction equipment',
 };

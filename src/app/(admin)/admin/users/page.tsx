@@ -28,7 +28,7 @@ export default function AdminUsersPage() {
 
   useEffect(() => {
     if (!isLoggedIn) {
-      router.push('/auth/login');
+      router.push('/login');
       return;
     }
     loadUsers();

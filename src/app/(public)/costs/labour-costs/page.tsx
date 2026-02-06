@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Labour Costs in Construction - UK Daily Rates | BUILDR',
+  title: 'Labour Costs in Construction - UK Daily Rates | TISSCA',
   description: 'Understand UK construction labour rates. Budget to premium pricing tiers, what determines daily rates, and how to assess value.',
   keywords: 'labour costs, tradesperson rates, daily rates, UK construction',
 };

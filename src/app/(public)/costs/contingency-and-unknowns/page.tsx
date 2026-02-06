@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Contingency & Unknowns in Construction - Budget Reserve | BUILDR',
+  title: 'Contingency & Unknowns in Construction - Budget Reserve | TISSCA',
   description: 'Why contingency is essential in construction. Hidden costs, unexpected issues, and how to budget for the unknown.',
   keywords: 'contingency, budget reserve, hidden costs, cost overruns, construction budget',
 };

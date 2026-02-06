@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Materials & Supplies Costs - Quality Tiers Explained | BUILDR',
+  title: 'Materials & Supplies Costs - Quality Tiers Explained | TISSCA',
   description: 'Understand construction materials costs. Quality tiers, waste factors, and how to get value for money in UK construction.',
   keywords: 'materials cost, construction materials, quality grades, waste factor',
 };

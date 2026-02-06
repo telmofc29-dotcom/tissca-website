@@ -63,7 +63,7 @@ export default function MaterialsPage() {
         } = await supabase.auth.getUser();
 
         if (!user) {
-          router.push('/sign-in');
+          router.push('/login');
           return;
         }
 
@@ -71,7 +71,7 @@ export default function MaterialsPage() {
         const profile = await getUserProfile(user.id);
 
         if (!profile || !['staff', 'accountant'].includes(profile.role)) {
-          router.push('/sign-in');
+          router.push('/login');
           return;
         }
 

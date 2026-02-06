@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'European Construction Pricing - Coming Soon | BUILDR',
+  title: 'European Construction Pricing - Coming Soon | TISSCA',
   description: 'European construction pricing guide coming soon. Covering main European markets and regional variations.',
   keywords: 'European construction costs, European pricing, construction pricing Europe',
 };

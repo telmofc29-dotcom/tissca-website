@@ -1,33 +1,45 @@
 /**
- * Global Brand Configuration
- * ============================
- * Single source of truth for all branding across the platform.
- * No hard-coded brand strings in components.
- * All references pull from this configuration.
+ * brand.ts v1.0.1 (TISSCA Website Rebrand + Domain Canonical)
+ * ==========================================================
+ * ✅ NOTES (LOCKED):
+ * - Single source of truth for all branding across the platform.
+ * - No hard-coded brand strings in components.
+ * - JSON-like config only; keep changes minimal and intentional.
  *
- * To change branding across the entire platform:
- * Simply update the values in this file.
+ * WHY v1.0.1:
+ * - Canonical domain choice: tissca.com (root) is primary.
+ * - www.tissca.com should redirect to tissca.com (hosting/DNS).
+ * - Base URL + structured data URL updated to avoid www mismatch.
+ *
+ * VERSION HISTORY:
+ * - v1.0.0: Initial config (as provided)
+ * - v1.0.1 (2026-02-04): Canonical domain URLs + support email added
  */
 
 export const brandConfig = {
   // Core Identity
-  name: 'BUILDR',
-  displayName: 'BUILDR',
+  name: 'TISSCA',
+  displayName: 'TISSCA',
   tagline: 'The Construction Authority',
-  description: 'Construction authority platform - The global reference for construction, renovations, workmanship standards, and calculations.',
+  description:
+    'Construction authority platform - The global reference for construction, renovations, workmanship standards, and calculations.',
 
   // Company
-  companyName: 'BUILDR',
-  companyLegalName: 'BUILDR',
+  companyName: 'TISSCA',
+  companyLegalName: 'TISSCA',
   year: new Date().getFullYear(),
 
   // URLs
-  baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'https://buildr.com',
-  domain: 'buildr.com',
+  // NOTE (CANONICAL):
+  // - Primary domain: https://tissca.com
+  // - www should redirect to the root domain at the hosting layer.
+  baseUrl: process.env.NEXT_PUBLIC_BASE_URL || 'https://tissca.com',
+  domain: 'tissca.com',
 
   // Contact & Social
   contact: {
-    email: 'hello@buildr.com',
+    email: 'hello@tissca.com',
+    supportEmail: 'support@tissca.com', // Used for /support (professional support presence)
     phone: null, // Add if needed
   },
   social: {
@@ -39,12 +51,12 @@ export const brandConfig = {
 
   // Branding Colors
   colors: {
-    primary: '#1f2937',      // Dark slate
-    secondary: '#374151',    // Medium slate
-    accent: '#3b82f6',       // Blue
-    success: '#10b981',      // Green
-    warning: '#f59e0b',      // Amber
-    error: '#ef4444',        // Red
+    primary: '#1f2937', // Dark slate
+    secondary: '#374151', // Medium slate
+    accent: '#3b82f6', // Blue
+    success: '#10b981', // Green
+    warning: '#f59e0b', // Amber
+    error: '#ef4444', // Red
     white: '#ffffff',
     light: '#f3f4f6',
     dark: '#111827',
@@ -74,7 +86,7 @@ export const brandConfig = {
 
   // Logo
   logo: {
-    alt: 'BUILDR Logo',
+    alt: 'TISSCA Logo',
     url: '/logo.svg', // Update with actual logo path when available
     darkUrl: '/logo-dark.svg',
   },
@@ -90,8 +102,9 @@ export const brandConfig = {
 
   // SEO Defaults
   seo: {
-    defaultTitle: 'BUILDR - Construction Authority',
-    defaultDescription: 'The global reference for construction, renovations, workmanship standards, and calculations.',
+    defaultTitle: 'TISSCA - Construction Authority',
+    defaultDescription:
+      'The global reference for construction, renovations, workmanship standards, and calculations.',
     defaultImage: '/og-image.png', // Update with actual image path when available
     twitterHandle: null,
   },
@@ -127,9 +140,10 @@ export const brandConfig = {
   organization: {
     '@context': 'https://schema.org',
     '@type': 'Organization',
-    name: 'BUILDR',
-    url: 'https://buildr.com',
-    description: 'The global reference for construction, renovations, workmanship standards, and calculations.',
+    name: 'TISSCA',
+    url: 'https://tissca.com',
+    description:
+      'The global reference for construction, renovations, workmanship standards, and calculations.',
   },
 
   // Subscription pricing (Stripe-ready)
@@ -146,13 +160,13 @@ export const brandConfig = {
         'Save calculator results',
         'Generate basic quotes',
         'Generate basic invoices',
-        'With BUILDR watermark',
+        'With TISSCA watermark',
       ],
       cta: 'Get Started',
     },
-    premium: {
-      tier: 'premium',
-      name: 'Premium',
+    pro: {
+      tier: 'pro',
+      name: 'Pro',
       price: 3,
       currency: 'GBP',
       interval: 'month',
@@ -165,12 +179,12 @@ export const brandConfig = {
         'Full mobile app access (iOS & Android)',
         'Unlimited quotes & invoices',
         'Upload your business logo',
-        'Remove BUILDR watermark',
+        'Remove TISSCA watermark',
         'Save client details',
         'Professional branded documents',
         'Priority support',
       ],
-      cta: 'Start Premium',
+      cta: 'Start Pro',
       tagline: 'For the price of a coffee',
     },
   },

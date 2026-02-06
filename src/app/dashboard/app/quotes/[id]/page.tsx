@@ -88,7 +88,7 @@ export default function ViewQuotePage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -96,7 +96,7 @@ export default function ViewQuotePage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 

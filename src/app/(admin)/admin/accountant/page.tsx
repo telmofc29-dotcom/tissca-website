@@ -27,7 +27,7 @@ export default function AccountantPage() {
 
   useEffect(() => {
     if (!isLoggedIn) {
-      router.push('/auth/login');
+      router.push('/login');
       return;
     }
     loadRevenueData();
@@ -85,7 +85,7 @@ export default function AccountantPage() {
     const url = window.URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `buildr-revenue-${new Date().toISOString().split('T')[0]}.csv`;
+    link.download = `tissca-revenue-${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

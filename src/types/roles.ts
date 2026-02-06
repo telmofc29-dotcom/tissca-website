@@ -16,6 +16,7 @@ export interface UserProfile {
   full_name: string | null;
   role: UserRole;
   business_id: string | null;
+  businessId?: string | null; // Alias for snake_case version
   avatar_url: string | null;
   created_at: string;
   updated_at: string;

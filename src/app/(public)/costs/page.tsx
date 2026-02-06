@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Construction Costs - How Much Should You Spend? | BUILDR',
+  title: 'Construction Costs - How Much Should You Spend? | TISSCA',
   description: 'Complete guide to UK construction costs. Understand materials, labour, equipment, permits, and contingency. Real pricing ranges and professional insights.',
   keywords: 'construction costs, building costs, labour costs, materials cost, UK pricing',
 };
@@ -226,7 +226,7 @@ export default function CostsPage() {
         <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white rounded-lg p-8">
           <h2 className="text-2xl font-bold mb-4">Use Our Tools</h2>
           <p className="mb-6">
-            BUILDR provides calculators to help you estimate costs transparently:
+            TISSCA provides calculators to help you estimate costs transparently:
           </p>
           <Link href="/calculators" className="inline-block bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded transition-colors">
             View All Calculators

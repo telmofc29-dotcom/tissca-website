@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Plumbing Costs UK - Labour Rates & Material Expenses | BUILDR',
+  title: 'Plumbing Costs UK - Labour Rates & Material Expenses | TISSCA',
   description: 'Understand UK plumbing costs. Labour rates, pipework costs, and what affects bathroom/kitchen plumbing pricing.',
   keywords: 'plumbing costs, UK plumber rates, pipework costs, bathroom plumbing, kitchen plumbing',
 };

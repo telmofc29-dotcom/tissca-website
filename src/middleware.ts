@@ -1,3 +1,27 @@
+/**
+ * middleware.ts v1.0.1 (Auth Guards + Verification Landing Safe-Path)
+ * ===================================================================
+ * ✅ NOTES (LOCKED):
+ * - Keep middleware behaviour the same unless a specific UX/flow requires change.
+ * - Protected paths must remain protected.
+ * - Public pages must remain accessible without redirects or auth loops.
+ *
+ * WHY v1.0.1:
+ * - Ensure email verification landing page is ALWAYS accessible:
+ *   /auth/verified must never be blocked or redirected.
+ * - Keep existing behaviour:
+ *   - Authenticated users should not access sign-in/sign-up/login/register pages.
+ *   - Unauthenticated users should be redirected away from protected routes.
+ *
+ * IMPORTANT:
+ * - /auth/verified is a public, hosted page used after Supabase verification.
+ * - Some devices/browsers may hit /auth/verified without a session; this must render.
+ *
+ * VERSION HISTORY:
+ * - v1.0.0: Initial middleware (as provided)
+ * - v1.0.1 (2026-02-04): Add explicit public allow-list for /auth/verified (no behaviour change elsewhere)
+ */
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
 
@@ -5,17 +29,15 @@ export async function middleware(request: NextRequest) {
   const requestUrl = new URL(request.url);
   const pathname = requestUrl.pathname;
 
+  // Public allow-list (must NEVER be redirected by auth rules)
+  // NOTE (LOCKED): /auth/verified is required to prevent "black screen" after email verification.
+  const alwaysPublicPaths = ['/auth/verified'];
+
   // Protected paths that require authentication
-  const protectedPaths = [
-    '/dashboard',
-    '/account',
-    '/admin',
-  ];
+  const protectedPaths = ['/dashboard', '/account', '/admin'];
 
   // Check if path is protected
-  const isProtectedPath = protectedPaths.some(
-    (path) => pathname.startsWith(path)
-  );
+  const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
 
   // Create response first
   let response = NextResponse.next({
@@ -53,16 +75,31 @@ export async function middleware(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
 
+  // ✅ Always allow public verification landing page (no redirects, no auth checks)
+  if (alwaysPublicPaths.includes(pathname)) {
+    return response;
+  }
+
   // If user is authenticated and trying to access auth pages, redirect to dashboard
-  if (user && (pathname === '/sign-in' || pathname === '/sign-up')) {
-    console.log(`[Middleware] User ${user.email} tried to access ${pathname}, redirecting to /dashboard`);
+  if (
+    user &&
+    (pathname === '/sign-in' ||
+      pathname === '/sign-up' ||
+      pathname === '/login' ||
+      pathname === '/register')
+  ) {
+    console.log(
+      `[Middleware] User ${user.email} tried to access ${pathname}, redirecting to /dashboard`
+    );
     return NextResponse.redirect(new URL('/dashboard/app', request.url));
   }
 
   // If user is NOT authenticated and accessing protected routes, redirect to sign-in
   if (!user && isProtectedPath) {
-    console.log(`[Middleware] Unauthenticated user tried to access protected route: ${pathname}, redirecting to /sign-in`);
-    return NextResponse.redirect(new URL('/sign-in', request.url));
+    console.log(
+      `[Middleware] Unauthenticated user tried to access protected route: ${pathname}, redirecting to /login`
+    );
+    return NextResponse.redirect(new URL('/login', request.url));
   }
 
   // Return response with updated cookies

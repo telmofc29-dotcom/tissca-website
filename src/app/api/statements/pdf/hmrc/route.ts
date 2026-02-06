@@ -57,14 +57,14 @@ export async function GET(request: NextRequest) {
     const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
     
     // Header
-    doc.fontSize(20).font('Helvetica-Bold').text('BUILDR', 50, 50);
+    doc.fontSize(20).font('Helvetica-Bold').text('TISSCA', 50, 50);
     doc.fontSize(14).font('Helvetica-Bold').text('HMRC Tax Summary Statement', { underline: true });
     doc.moveDown(0.5);
     
     // Statement info
     doc.fontSize(11).font('Helvetica');
     doc.text(`Period: ${monthName} ${year}`, { lineBreak: false });
-    doc.text(`Business: BUILDR`);
+    doc.text('Business: TISSCA');
     doc.text(`Account: ${user.email}`);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`);
     doc.moveDown(1);
@@ -133,7 +133,7 @@ export async function GET(request: NextRequest) {
 
     // Footer with disclaimer
     doc.fontSize(7).fillColor('#999999');
-    doc.text('This document was generated automatically by BUILDR and is suitable for submission', 50, 700, {
+    doc.text('This document was generated automatically by TISSCA and is suitable for submission', 50, 700, {
       align: 'center',
       width: 500,
     });

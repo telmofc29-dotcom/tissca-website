@@ -175,11 +175,11 @@ async function generateInvoicePDF(data: {
 }
 
 /**
- * Draw branded header with BUILDR logo and company details
+ * Draw branded header with TISSCA logo and company details
  */
 function drawHeader(doc: PDFKit.PDFDocument, business: any) {
-  // BUILDR Branding
-  doc.fontSize(28).font('Helvetica-Bold').fillColor('#1e40af').text('BUILDR', 40, 40);
+  // TISSCA Branding
+  doc.fontSize(28).font('Helvetica-Bold').fillColor('#1e40af').text('TISSCA', 40, 40);
 
   // Company details
   const companyX = 40;

@@ -22,6 +22,8 @@ model User {
   subscription  Subscription?
   transactions  Transaction[]
   profile       UserProfile?
+  leads         Lead[]
+  jobs          Job[]
 
   @@index([supabaseId])
   @@index([email])
@@ -188,4 +190,48 @@ model Transaction {
   @@index([type])
   @@index([userId, date])
   @@map("transaction")
+}
+
+model Lead {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status         String    @default("New")
+  followUpDate   DateTime?
+  valueEstimate  Float?    @default(0)
+  tags           Json?
+  notes          String?
+  source         String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  jobs           Job[]
+
+  @@index([userId])
+  @@index([status])
+  @@index([followUpDate])
+  @@index([createdAt])
+  @@map("lead")
+}
+
+model Job {
+  id                String    @id @default(cuid())
+  userId            String
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedLeadId      String?
+  lead              Lead?     @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  status            String    @default("Scheduled")
+  scheduledDate     DateTime?
+  dueDate           DateTime?
+  paymentDueDate    DateTime?
+  value             Float?    @default(0)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([status])
+  @@index([paymentDueDate])
+  @@index([scheduledDate])
+  @@index([createdAt])
+  @@map("job")
 }

@@ -3,7 +3,7 @@ import { ContentPageLayout } from '@/components/ContentPageLayout';
 
 export const metadata: Metadata = {
   title: 'Contact',
-  description: 'Get in touch with BUILDR.',
+  description: 'Get in touch with TISSCA.',
 };
 
 export default function ContactPage() {
@@ -18,15 +18,15 @@ export default function ContactPage() {
           <h2>Get In Touch</h2>
           <p>
             Have a question about construction, a topic you'd like us to cover,
-            or feedback about BUILDR? We'd like to hear from you.
+            or feedback about TISSCA? We'd like to hear from you.
           </p>
         </section>
 
         <section>
           <h3>Email</h3>
           <p>
-            <a href="mailto:hello@buildr.com" className="text-accent hover:text-blue-700 font-semibold">
-              hello@buildr.com
+            <a href="mailto:hello@tissca.com" className="text-accent hover:text-blue-700 font-semibold">
+              hello@tissca.com
             </a>
           </p>
         </section>

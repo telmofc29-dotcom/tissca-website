@@ -3,13 +3,13 @@ import { ContentPageLayout } from '@/components/ContentPageLayout';
 
 export const metadata: Metadata = {
   title: 'About',
-  description: 'About BUILDR - the construction authority platform.',
+  description: 'About TISSCA - the construction authority platform.',
 };
 
 export default function AboutPage() {
   return (
     <ContentPageLayout
-      title="About BUILDR"
+      title="About TISSCA"
       description="Our mission to educate and empower the construction industry."
       slug="about"
     >
@@ -17,7 +17,7 @@ export default function AboutPage() {
         <section>
           <h2>Our Mission</h2>
           <p>
-            BUILDR is dedicated to becoming the global reference for construction authority.
+            TISSCA is dedicated to becoming the global reference for construction authority.
             We believe that quality construction education, honest standards, and truthful information
             can transform the industry and protect homeowners from costly mistakes.
           </p>

@@ -1,5 +1,5 @@
 /**
- * BUILDR Platform - Complete Page Index & Sitemap
+ * TISSCA Platform - Complete Page Index & Sitemap
  * ================================================
  * 
  * This file documents all pages in the platform, their purposes,
@@ -12,7 +12,7 @@ export const sitePages = {
     {
       path: '/',
       title: 'Home',
-      description: 'BUILDR homepage with platform overview and entry points',
+      description: 'TISSCA homepage with platform overview and entry points',
       type: 'homepage',
       template: 'hero + grid cards',
     },
@@ -199,7 +199,7 @@ export const sitePages = {
   info: [
     {
       path: '/about',
-      title: 'About BUILDR',
+      title: 'About TISSCA',
       description: 'Platform mission and philosophy',
       type: 'static',
     },
@@ -218,7 +218,7 @@ export const sitePages = {
     {
       path: '/contact',
       title: 'Contact Us',
-      description: 'Get in touch with BUILDR',
+      description: 'Get in touch with TISSCA',
       type: 'contact',
     },
   ],

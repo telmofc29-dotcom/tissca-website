@@ -1,8 +1,33 @@
 {
-  "name": "buildr",
-  "version": "1.0.0",
-  "description": "Construction Authority Platform - The global reference for construction, renovations, workmanship standards, and calculations.",
+  "name": "tissca",
+  "version": "1.0.1",
+  "description": "TISSCA - Trade & Operations Platform (Quotes, Invoices, CRM, Assets, Team).",
   "private": true,
+  "tissca_meta": {
+    "notes": [
+      "LOCKED: Keep scripts unchanged unless a specific deployment/build issue requires it.",
+      "LOCKED: Next.js 14 + React 18 is correct for Vercel hosting (preferred for App Router/Pages Router).",
+      "NOTE: JSON does not allow comments, so project notes live here safely without breaking builds."
+    ],
+    "version_history": [
+      {
+        "version": "1.0.1",
+        "date_utc": "2026-02-04",
+        "changes": [
+          "Rebrand package name from 'buildr' to 'tissca'.",
+          "Update description to match TISSCA positioning.",
+          "Add tissca_meta notes + version history (non-functional, safe metadata)."
+        ]
+      },
+      {
+        "version": "1.0.0",
+        "date_utc": "unknown",
+        "changes": [
+          "Initial BUILDR website project baseline."
+        ]
+      }
+    ]
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

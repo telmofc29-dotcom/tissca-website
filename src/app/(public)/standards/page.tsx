@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Construction Standards & Quality | BUILDR',
+  title: 'Construction Standards & Quality | TISSCA',
   description: 'Quality standards for construction work. Learn about workmanship, materials, safety, regulations, and finishing quality expectations.',
   keywords: 'construction standards, quality standards, building regulations, safety standards, workmanship',
 };

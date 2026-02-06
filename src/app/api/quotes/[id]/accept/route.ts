@@ -54,7 +54,7 @@ export async function POST(
     // Verify user is associated with this client
     const { data: clientProfile } = await supabase
       .from('user_profile')
-      .select('userId')
+      .select('userId, client_id')
       .eq('userId', user.id)
       .single();
 

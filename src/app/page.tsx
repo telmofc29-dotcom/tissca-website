@@ -1,9 +1,30 @@
+/**
+ * page.tsx v1.0.1 (TISSCA Home Page Metadata + Legal/Support Links)
+ * ================================================================
+ * ✅ NOTES (LOCKED):
+ * - Minimal, safe improvements only.
+ * - Keep existing layout/content intact.
+ * - Add ONLY what’s needed for:
+ *   1) clearer SEO metadata (title uses tagline)
+ *   2) professional footer links to /privacy, /terms, /support
+ *   3) ensure baseUrl/canonical alignment via config (handled in layout/metadata)
+ *
+ * WHY v1.0.1:
+ * - Home metadata should match brand default ("TISSCA - The Construction Authority")
+ * - Add legal/support links now because we’re about to host real pages:
+ *   /privacy, /terms, /support, and /auth/verified (verification UX fix)
+ *
+ * VERSION HISTORY:
+ * - v1.0.0: Initial file (as provided)
+ * - v1.0.1 (2026-02-04): Metadata polish + add minimal footer links
+ */
+
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { brandConfig } from '@/config/brand';
 
 export const metadata: Metadata = {
-  title: brandConfig.displayName,
+  title: `${brandConfig.displayName} - ${brandConfig.tagline}`,
   description: brandConfig.description,
 };
 
@@ -20,7 +41,8 @@ export default function RootPage() {
             <p className="text-xl text-gray-200 mb-4">{brandConfig.tagline}</p>
             <p className="text-lg text-gray-300 mb-8 leading-relaxed">
               The global reference for construction, renovations, workmanship standards,
-              and calculations. Learn how to do it right, spot what's wrong, and avoid costly mistakes.
+              and calculations. Learn how to do it right, spot what&apos;s wrong, and avoid
+              costly mistakes.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -72,8 +94,8 @@ export default function RootPage() {
                 How Much Should This Cost?
               </h3>
               <p className="text-secondary mb-4 leading-relaxed">
-                Honest construction cost breakdowns covering labour, materials,
-                regional pricing logic, and professional vs budget comparisons.
+                Honest construction cost breakdowns covering labour, materials, regional
+                pricing logic, and professional vs budget comparisons.
               </p>
               <span className="text-accent font-semibold">Explore →</span>
             </Link>
@@ -87,8 +109,8 @@ export default function RootPage() {
                 Avoid Scams & Costly Mistakes
               </h3>
               <p className="text-secondary mb-4 leading-relaxed">
-                Recognize builder red flags, understand contract tricks, spot fake guarantees,
-                and protect yourself from common homeowner traps.
+                Recognize builder red flags, understand contract tricks, spot fake
+                guarantees, and protect yourself from common homeowner traps.
               </p>
               <span className="text-accent font-semibold">Explore →</span>
             </Link>
@@ -119,13 +141,34 @@ export default function RootPage() {
             Join thousands of homeowners and professionals using {brandConfig.displayName}.
           </p>
           <Link
-            href="/sign-up"
+            href="/register"
             className="inline-block px-8 py-3 bg-accent hover:bg-blue-600 text-white font-semibold rounded transition-colors"
           >
             Get Started Free
           </Link>
         </div>
       </section>
+
+      {/* Footer (Minimal legal/support presence) */}
+      <footer className="border-t border-gray-200 py-8">
+        <div className="max-w-[1200px] mx-auto px-4 md:px-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+          <div className="text-sm text-secondary">
+            © {brandConfig.year} {brandConfig.companyName}. All rights reserved.
+          </div>
+
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
+            <Link href="/privacy" className="text-secondary hover:text-primary">
+              Privacy
+            </Link>
+            <Link href="/terms" className="text-secondary hover:text-primary">
+              Terms
+            </Link>
+            <Link href="/support" className="text-secondary hover:text-primary">
+              Support
+            </Link>
+          </div>
+        </div>
+      </footer>
     </>
   );
 }

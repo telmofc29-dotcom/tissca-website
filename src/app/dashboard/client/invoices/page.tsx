@@ -31,7 +31,7 @@ export default function ClientInvoicesPage() {
       try {
         if (!supabase) {
           console.error('[ClientInvoices] Supabase not initialized');
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -42,7 +42,7 @@ export default function ClientInvoicesPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -50,7 +50,7 @@ export default function ClientInvoicesPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -81,7 +81,7 @@ export default function ClientInvoicesPage() {
         setInvoices((invoicesData as Invoice[]) || []);
       } catch (error) {
         console.error('Error fetching data:', error);
-        router.push('/auth/login');
+        router.push('/login');
       } finally {
         setLoading(false);
       }

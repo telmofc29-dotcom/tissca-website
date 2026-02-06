@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Tiling Costs UK - Labour Rates & Material Expenses | BUILDR',
+  title: 'Tiling Costs UK - Labour Rates & Material Expenses | TISSCA',
   description: 'Understand UK tiling costs. Labour rates (£100-220/day), tile material costs, and complexity factors explained.',
   keywords: 'tiling costs, UK tiling rates, tile labour, bathroom tiles, kitchen tiles',
 };

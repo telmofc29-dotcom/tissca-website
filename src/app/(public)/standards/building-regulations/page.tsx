@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Building Regulations & Compliance Standards | BUILDR',
+  title: 'Building Regulations & Compliance Standards | TISSCA',
   description: 'Building Regulations requirements, compliance standards, certifications needed for construction work, and when inspections are required.',
   keywords: 'building regulations, compliance, building control, construction standards, certifications',
 };

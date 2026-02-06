@@ -32,7 +32,7 @@ export default function StaffQuotesPage() {
       try {
         if (!supabase) {
           console.error('[Quotes] Supabase not initialized');
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -43,7 +43,7 @@ export default function StaffQuotesPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -51,7 +51,7 @@ export default function StaffQuotesPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -81,7 +81,7 @@ export default function StaffQuotesPage() {
         setQuotes((quotesData as Quote[]) || []);
       } catch (error) {
         console.error('Error fetching data:', error);
-        router.push('/auth/login');
+        router.push('/login');
       } finally {
         setLoading(false);
       }

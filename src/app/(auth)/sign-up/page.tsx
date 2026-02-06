@@ -55,6 +55,9 @@ export default function SignUpPage() {
       const { data, error } = await supabase.auth.signUp({
         email,
         password,
+        options: {
+          emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL || 'https://www.tissca.com'}/auth/verified`,
+        },
       });
 
       if (error) {
@@ -63,7 +66,7 @@ export default function SignUpPage() {
       } else if (data.user) {
         console.log('[SignUp] Success! User created:', data.user.id);
         // Redirect to sign-in or check email page
-        router.push('/sign-in?message=Check your email to confirm your account');
+        router.push('/login?message=Check your email to confirm your account');
       }
     } catch (err: any) {
       const errorMessage = err?.message || 'An unexpected error occurred';
@@ -79,7 +82,7 @@ export default function SignUpPage() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">Create account</h1>
-          <p className="text-secondary">Join BUILDR today</p>
+          <p className="text-secondary">Join TISSCA today</p>
         </div>
 
         <form onSubmit={handleSignUp} className="bg-white p-8 rounded shadow-md">
@@ -152,7 +155,7 @@ export default function SignUpPage() {
 
         <p className="text-center text-secondary text-sm mt-6">
           Already have an account?{' '}
-          <Link href="/sign-in" className="text-primary font-medium hover:text-accent">
+          <Link href="/login" className="text-primary font-medium hover:text-accent">
             Sign in
           </Link>
         </p>

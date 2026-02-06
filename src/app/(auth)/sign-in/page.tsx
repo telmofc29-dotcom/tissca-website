@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { supabase, getSupabaseEnv } from '@/lib/supabase';
+import { supabase, getSupabaseEnv, getOrCreateAppProfile } from '@/lib/supabase';
 import { PasswordInput } from '@/components/ui/password-input';
 
 export default function SignInPage() {
@@ -76,6 +76,9 @@ export default function SignInPage() {
       }
 
       console.log(`[SignIn] Session cookies set successfully`);
+
+      // Ensure app profile exists
+      await getOrCreateAppProfile(data.user);
       console.log(`[SignIn] Redirecting to dashboard...`);
 
       // Clear any previous errors
@@ -101,7 +104,7 @@ export default function SignInPage() {
       <div className="max-w-md w-full">
         <div className="text-center mb-8">
           <h1 className="text-3xl font-bold text-primary mb-2">Sign in</h1>
-          <p className="text-secondary">Welcome back to BUILDR</p>
+          <p className="text-secondary">Welcome back to TISSCA</p>
         </div>
 
         <form onSubmit={handleSignIn} className="bg-white p-8 rounded shadow-md">
@@ -162,7 +165,7 @@ export default function SignInPage() {
 
         <p className="text-center text-secondary text-sm mt-6">
           Don&apos;t have an account?{' '}
-          <Link href="/sign-up" className="text-primary font-medium hover:text-accent">
+          <Link href="/register" className="text-primary font-medium hover:text-accent">
             Create one
           </Link>
         </p>

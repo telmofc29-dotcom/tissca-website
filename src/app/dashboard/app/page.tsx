@@ -42,7 +42,7 @@ export default function ContractorDashboard() {
 
         if (!user) {
           console.log('[Dashboard] No user found, redirecting to sign-in');
-          router.push('/sign-in');
+          router.push('/login');
           return;
         }
 

@@ -24,7 +24,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
     supabase.auth.getSession().then(({ data: { session } }: any) => {
       if (!session) {
         // Not logged in, redirect to sign-in
-        router.push('/sign-in');
+        router.push('/login');
       } else {
         setIsLoading(false);
       }
@@ -35,7 +35,7 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event: any, session: any) => {
       if (!session) {
-        router.push('/sign-in');
+        router.push('/login');
       } else {
         setIsLoading(false);
       }

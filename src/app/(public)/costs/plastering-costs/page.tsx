@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Plastering Costs UK - Labour Rates & Material Costs | BUILDR',
+  title: 'Plastering Costs UK - Labour Rates & Material Costs | TISSCA',
   description: 'Understand UK plastering costs. Labour rates (£90-180/day), material expenses, and what affects pricing.',
   keywords: 'plastering costs, UK plastering rates, plaster labour, wall plastering',
 };

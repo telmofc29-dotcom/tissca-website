@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
     const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
     
     // Header
-    doc.fontSize(24).font('Helvetica-Bold').text('BUILDR', 50, 50);
+    doc.fontSize(24).font('Helvetica-Bold').text('TISSCA', 50, 50);
     doc.fontSize(12).font('Helvetica').text('Monthly Bank Statement', { underline: true });
     doc.moveDown(0.5);
     
@@ -127,7 +127,7 @@ export async function GET(request: NextRequest) {
 
     // Footer
     doc.fontSize(8).font('Helvetica').fillColor('#999999');
-    doc.text('This is an automated statement from BUILDR. For enquiries, contact support.', 50, 750, {
+    doc.text('This is an automated statement from TISSCA. For enquiries, contact support.', 50, 750, {
       align: 'center',
       width: 500,
     });

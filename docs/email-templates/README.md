@@ -9,12 +9,12 @@
 
 | Email Type | Sender Name | Subject Line | Template File |
 |------------|------------|--------------|---------------|
-| Confirm Signup | BUILDR | Confirm your BUILDR account | `confirm-signup.html` |
-| Magic Link | BUILDR | Your BUILDR login link | `magic-link.html` |
-| Reset Password | BUILDR | Reset your BUILDR password | `reset-password.html` |
+| Confirm Signup | TISSCA | Confirm your TISSCA account | `confirm-signup.html` |
+| Magic Link | TISSCA | Your TISSCA login link | `magic-link.html` |
+| Reset Password | TISSCA | Reset your TISSCA password | `reset-password.html` |
 
 ### 3. For Each Template
-1. **Sender Name:** Set to `BUILDR`
+1. **Sender Name:** Set to `TISSCA`
 2. **Subject Line:** Copy from table above
 3. **Body (HTML):** 
    - Open the corresponding `.html` file in this directory
@@ -24,7 +24,7 @@
 
 ### 4. Test It
 - Sign up for an account
-- Check email - should show BUILDR branding ✅
+- Check email - should show TISSCA branding ✅
 
 ## Template Variables
 
@@ -37,7 +37,7 @@ These are automatically filled by Supabase:
 ## Common Issues
 
 **Emails still look like Supabase?**
-→ Verify sender name is set to `BUILDR` in Supabase
+→ Verify sender name is set to `TISSCA` in Supabase
 
 **Variables showing as text?**
 → Variable name is incorrect. Check spelling and brackets `{{ }}`
@@ -47,12 +47,12 @@ These are automatically filled by Supabase:
 
 ## Optional: Custom Domain
 
-To send from `noreply@buildr.co`:
+To send from `noreply@tissca.com`:
 
 1. Go to **Authentication** → **Email**
 2. Enable **Custom SMTP**
 3. Configure your email provider's SMTP settings
-4. Set Sender Email: `noreply@buildr.co`
+4. Set Sender Email: `noreply@tissca.com`
 
 (See EMAIL_BRANDING.md for detailed instructions)
 

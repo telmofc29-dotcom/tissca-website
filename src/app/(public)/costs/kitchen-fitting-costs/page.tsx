@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Kitchen Fitting Costs UK - Budget to Premium Kitchens | BUILDR',
+  title: 'Kitchen Fitting Costs UK - Budget to Premium Kitchens | TISSCA',
   description: 'Understand UK kitchen fitting costs. Complete kitchen costs from budget to premium, labour, and what affects pricing.',
   keywords: 'kitchen costs, fitted kitchens, kitchen fitting, kitchen renovation, kitchen labour',
 };

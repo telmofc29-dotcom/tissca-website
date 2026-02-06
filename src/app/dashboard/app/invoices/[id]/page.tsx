@@ -53,6 +53,11 @@ export default function StaffInvoiceDetailPage() {
       try {
         setLoading(true);
 
+        if (!supabase) {
+          router.push('/login');
+          return;
+        }
+
         // Get authenticated user
         const {
           data: { user },
@@ -60,7 +65,7 @@ export default function StaffInvoiceDetailPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -68,7 +73,7 @@ export default function StaffInvoiceDetailPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -85,7 +90,7 @@ export default function StaffInvoiceDetailPage() {
           .from('invoices')
           .select('*')
           .eq('id', invoiceId)
-          .eq('business_id', profileData.businessId)
+          .eq('business_id', profileData.businessId || '')
           .single();
 
         if (invoiceError || !invoiceData) {

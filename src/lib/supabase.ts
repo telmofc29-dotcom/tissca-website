@@ -1,4 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
+import type { UserProfile } from '@/types/roles';
+import type { PlanTier } from '@/lib/plans';
 
 /**
  * Get Supabase environment variables at runtime
@@ -131,7 +133,7 @@ export async function signUp(email: string, password: string) {
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/callback`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/verified`,
     },
   });
   
@@ -187,7 +189,7 @@ export async function updatePassword(password: string) {
  * If profile doesn't exist, creates a default one automatically
  * Resolves the 404 error on dashboard load
  */
-export async function getUserProfile(userId: string) {
+export async function getUserProfile(userId: string): Promise<UserProfile | null> {
   const client = getSupabaseClient();
   if (!client) {
     throw new Error('[Supabase] Client not initialized');
@@ -221,11 +223,109 @@ export async function getUserProfile(userId: string) {
       throw createError;
     }
     
-    profile = newProfile;
+    profile = newProfile as UserProfile;
   } else if (error) {
     console.error('[Profile] Failed to fetch profile:', error);
     throw error;
   }
 
-  return profile;
+  // Add alias for backward compatibility
+  if (profile) {
+    (profile as any).businessId = profile.business_id;
+  }
+
+  return profile as UserProfile | null;
+}
+
+export interface AppProfile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  company_name: string | null;
+  phone: string | null;
+  plan: PlanTier;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * Get or create TISSCA profile (profiles table)
+ * Ensures a row exists on first login
+ */
+export async function getOrCreateAppProfile(user: {
+  id: string;
+  email?: string | null;
+  user_metadata?: { full_name?: string; name?: string };
+}): Promise<AppProfile> {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error('[Supabase] Client not initialized');
+  }
+
+  const fullName = user.user_metadata?.full_name || user.user_metadata?.name || null;
+
+  let { data: profile, error } = await client
+    .from('profiles')
+    .select('*')
+    .eq('id', user.id)
+    .single();
+
+  if (error && error.code === 'PGRST116') {
+    const { data: createdProfile, error: createError } = await client
+      .from('profiles')
+      .insert({
+        id: user.id,
+        email: user.email || '',
+        full_name: fullName,
+        plan: 'free',
+      })
+      .select('*')
+      .single();
+
+    if (createError || !createdProfile) {
+      console.error('[Profile] Failed to create profile:', createError);
+      throw createError || new Error('Failed to create profile');
+    }
+
+    profile = createdProfile;
+  } else if (error) {
+    console.error('[Profile] Failed to fetch profile:', error);
+    throw error;
+  }
+
+  if (!profile) {
+    throw new Error('Profile not found');
+  }
+
+  return profile as AppProfile;
+}
+
+/**
+ * Update TISSCA profile fields
+ */
+export async function updateAppProfile(
+  userId: string,
+  updates: Partial<Pick<AppProfile, 'full_name' | 'company_name' | 'phone' | 'plan'>>
+): Promise<AppProfile> {
+  const client = getSupabaseClient();
+  if (!client) {
+    throw new Error('[Supabase] Client not initialized');
+  }
+
+  const { data, error } = await client
+    .from('profiles')
+    .update({
+      ...updates,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', userId)
+    .select('*')
+    .single();
+
+  if (error || !data) {
+    console.error('[Profile] Failed to update profile:', error);
+    throw error || new Error('Failed to update profile');
+  }
+
+  return data as AppProfile;
 }

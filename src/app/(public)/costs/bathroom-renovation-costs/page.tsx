@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Bathroom Renovation Costs UK - Budget to Premium Bathrooms | BUILDR',
+  title: 'Bathroom Renovation Costs UK - Budget to Premium Bathrooms | TISSCA',
   description: 'Understand UK bathroom renovation costs. Complete bathroom costs from budget to premium, labour, and what affects pricing.',
   keywords: 'bathroom costs, bathroom renovation, fitted bathrooms, bathroom labour, bathroom refit',
 };

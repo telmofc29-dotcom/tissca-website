@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Flooring Costs UK - Labour Rates & Installation Expenses | BUILDR',
+  title: 'Flooring Costs UK - Labour Rates & Installation Expenses | TISSCA',
   description: 'Understand UK flooring costs. Labour rates (£60-200/day), material costs, and what affects pricing.',
   keywords: 'flooring costs, UK flooring rates, flooring labour, laminate flooring, wooden floors',
 };

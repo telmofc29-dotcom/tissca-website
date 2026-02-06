@@ -136,18 +136,18 @@ export function AuthNav() {
 
   // Only show user dropdown if both client and server sessions are valid
   // On sign-in page specifically, only show if server session is valid to prevent false "logged in" state
-  if (!user || !serverSessionValid || (pathname === '/sign-in' && !serverSessionValid)) {
+  if (!user || !serverSessionValid || (pathname === '/login' && !serverSessionValid)) {
     // Not logged in - Show Sign in and Create account buttons
     return (
       <div className="flex items-center gap-3">
         <Link
-          href="/sign-in"
+          href="/login"
           className="px-4 py-2 h-10 flex items-center text-sm font-medium text-primary hover:text-accent transition-colors border border-primary rounded hover:bg-gray-50"
         >
           Sign in
         </Link>
         <Link
-          href="/sign-up"
+          href="/register"
           className="px-4 py-2 h-10 flex items-center text-sm font-medium bg-primary text-white rounded hover:bg-accent transition-colors"
         >
           Create account

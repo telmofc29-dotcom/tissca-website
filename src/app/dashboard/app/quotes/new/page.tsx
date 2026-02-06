@@ -64,7 +64,7 @@ export default function CreateQuotePage() {
       try {
         if (!supabase) {
           console.error('[NewQuote] Supabase not initialized');
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -77,7 +77,7 @@ export default function CreateQuotePage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -85,7 +85,7 @@ export default function CreateQuotePage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/auth/login');
+          router.push('/login');
           return;
         }
 
@@ -138,7 +138,7 @@ export default function CreateQuotePage() {
         setLabourRates((labourData as LabourRate[]) || []);
       } catch (error) {
         console.error('Error initializing:', error);
-        router.push('/auth/login');
+        router.push('/login');
       } finally {
         setLoading(false);
       }

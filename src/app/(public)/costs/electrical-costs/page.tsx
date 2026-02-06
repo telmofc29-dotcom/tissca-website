@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Electrical Costs UK - Labour Rates & Material Expenses | BUILDR',
+  title: 'Electrical Costs UK - Labour Rates & Material Expenses | TISSCA',
   description: 'Understand UK electrical costs. Rewiring costs, new circuit costs, and certification requirements explained.',
   keywords: 'electrical costs, rewiring, electrician rates, electrical labour, circuit installation',
 };

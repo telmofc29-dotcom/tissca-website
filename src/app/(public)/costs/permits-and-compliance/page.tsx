@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Permits & Compliance Costs - Building Regulations & Certifications | BUILDR',
+  title: 'Permits & Compliance Costs - Building Regulations & Certifications | TISSCA',
   description: 'Understand construction permits and compliance costs. Building Regulations approval, certifications, and legal requirements explained.',
   keywords: 'building regulations, permits, certifications, compliance costs, structural engineer',
 };

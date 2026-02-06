@@ -75,7 +75,7 @@ export default function PriceBookPage() {
             <li>Category import/export</li>
             <li>Price history tracking</li>
             <li>Seasonal pricing rules</li>
-            <li>Integration with BUILDR calculators</li>
+            <li>Integration with TISSCA calculators</li>
           </ul>
         </div>
       </div>

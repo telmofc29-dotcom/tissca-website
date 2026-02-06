@@ -9,7 +9,7 @@
  * Modes:
  * - Budget: Cost-conscious approach, basic quality, shorter timelines
  * - Standard: Professional standard, typical market quality, standard pace
- * - Premium: BUILDR Pro Benchmark, high-quality, meticulous finishes, longer timelines
+ * - Premium: TISSCA Pro Benchmark, high-quality, meticulous finishes, longer timelines
  */
 
 export type PricingMode = 'budget' | 'standard' | 'premium';
@@ -327,7 +327,7 @@ export const pricingModeDescriptions: Record<PricingMode, string> = {
   standard:
     'Professional standard. Typical market quality, conventional materials, standard timeline. Suitable for most residential work.',
   premium:
-    'BUILDR Pro Benchmark. Premium finishes, high-quality materials, meticulous workmanship, longer timelines. Suitable for high-end properties and exacting clients.',
+    'TISSCA Pro Benchmark. Premium finishes, high-quality materials, meticulous workmanship, longer timelines. Suitable for high-end properties and exacting clients.',
 };
 
 // =============================================================================

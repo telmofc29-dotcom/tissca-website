@@ -14,7 +14,7 @@ export default function AdminPricingPage() {
           <div className="text-sm text-amber-900 space-y-2">
             <p><span className="font-semibold">Budget Mode:</span> Cost-conscious approach. Basic quality, standard materials, quicker timeline.</p>
             <p><span className="font-semibold">Standard Mode:</span> Professional standard. Typical market quality, conventional materials, standard timeline.</p>
-            <p><span className="font-semibold">Premium Mode:</span> BUILDR Pro Benchmark. Premium finishes, high-quality materials, meticulous workmanship.</p>
+            <p><span className="font-semibold">Premium Mode:</span> TISSCA Pro Benchmark. Premium finishes, high-quality materials, meticulous workmanship.</p>
           </div>
         </div>
 

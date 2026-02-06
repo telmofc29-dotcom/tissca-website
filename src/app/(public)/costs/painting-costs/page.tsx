@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Metadata } from 'next';
 
 export const metadata: Metadata = {
-  title: 'Painting Costs UK - Labour Rates & Material Expenses | BUILDR',
+  title: 'Painting Costs UK - Labour Rates & Material Expenses | TISSCA',
   description: 'Understand UK painting costs. Labour rates (£80-180/day), material expenses, and budget vs premium pricing explained.',
   keywords: 'painting costs, UK painting rates, interior painting, painting labour',
 };

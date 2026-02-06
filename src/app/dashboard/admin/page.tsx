@@ -22,13 +22,11 @@ export default function AdminDashboard() {
     accountants: 0,
   });
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
 
   useEffect(() => {
     const loadData = async () => {
       try {
         if (!supabase) {
-          setError('Supabase not configured');
           setLoading(false);
           return;
         }
@@ -40,7 +38,7 @@ export default function AdminDashboard() {
 
         if (!user) {
           console.log('[Admin] No user found, redirecting to sign-in');
-          router.push('/sign-in');
+          router.push('/login');
           return;
         }
 
@@ -51,7 +49,7 @@ export default function AdminDashboard() {
 
         if (!profile || profile.role !== 'admin') {
           console.log('[Admin] User is not admin, redirecting');
-          router.push('/sign-in');
+          router.push('/login');
           return;
         }
 
