@@ -37,12 +37,12 @@ export async function createJob(
   userId: string,
   data: {
     status?: string;
-    scheduledDate?: Date;
-    dueDate?: Date;
-    paymentDueDate?: Date;
+    scheduledDate?: Date | null;
+    dueDate?: Date | null;
+    paymentDueDate?: Date | null;
     value?: number;
-    notes?: string;
-    linkedLeadId?: string;
+    notes?: string | null;
+    linkedLeadId?: string | null;
   }
 ) {
   try {

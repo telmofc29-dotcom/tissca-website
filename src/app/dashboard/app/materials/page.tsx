@@ -32,6 +32,7 @@ export default function MaterialsPage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>('materials');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string>('');
   const [materials, setMaterials] = useState<Material[]>([]);
   const [labourRates, setLabourRates] = useState<LabourRate[]>([]);
   const [businessId, setBusinessId] = useState<string>('');
@@ -57,6 +58,12 @@ export default function MaterialsPage() {
   useEffect(() => {
     const loadData = async () => {
       try {
+        if (!supabase) {
+          setError('Supabase client not initialized');
+          setLoading(false);
+          return;
+        }
+
         // Get user
         const {
           data: { user },
@@ -72,6 +79,12 @@ export default function MaterialsPage() {
 
         if (!profile || !['staff', 'accountant'].includes(profile.role)) {
           router.push('/login');
+          return;
+        }
+
+        if (!profile.businessId) {
+          setError('Business ID not found');
+          setLoading(false);
           return;
         }
 
@@ -98,6 +111,7 @@ export default function MaterialsPage() {
         setLoading(false);
       } catch (error) {
         console.error('Error loading data:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load data');
         setLoading(false);
       }
     };
@@ -108,6 +122,10 @@ export default function MaterialsPage() {
   const handleAddMaterial = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!businessId) return;
+    if (!supabase) {
+      setError('Supabase client not initialized');
+      return;
+    }
 
     const { error } = await supabase.from('materials_catalog').insert({
       business_id: businessId,
@@ -117,7 +135,7 @@ export default function MaterialsPage() {
       default_price: parseFloat(materialForm.default_price),
       currency: materialForm.currency,
       is_active: true,
-    });
+    } as any);
 
     if (!error) {
       setMaterialForm({
@@ -140,6 +158,10 @@ export default function MaterialsPage() {
   const handleAddLabourRate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!businessId) return;
+    if (!supabase) {
+      setError('Supabase client not initialized');
+      return;
+    }
 
     const { error } = await supabase.from('labour_rates').insert({
       business_id: businessId,
@@ -149,7 +171,7 @@ export default function MaterialsPage() {
       unit: labourForm.unit,
       currency: labourForm.currency,
       is_active: true,
-    });
+    } as any);
 
     if (!error) {
       setLabourForm({
@@ -171,6 +193,11 @@ export default function MaterialsPage() {
 
   const handleDeleteMaterial = async (id: string) => {
     if (confirm('Are you sure you want to delete this material?')) {
+      if (!supabase) {
+        setError('Supabase client not initialized');
+        return;
+      }
+
       const { error } = await supabase
         .from('materials_catalog')
         .delete()
@@ -184,6 +211,11 @@ export default function MaterialsPage() {
 
   const handleDeleteLabour = async (id: string) => {
     if (confirm('Are you sure you want to delete this labour rate?')) {
+      if (!supabase) {
+        setError('Supabase client not initialized');
+        return;
+      }
+
       const { error } = await supabase
         .from('labour_rates')
         .delete()
@@ -257,6 +289,20 @@ export default function MaterialsPage() {
 
   if (loading) {
     return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return (
+      <DashboardShell
+        navItems={navItems}
+        title="Materials & Pricing"
+        role="staff"
+      >
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
+        </div>
+      </DashboardShell>
+    );
   }
 
   return (

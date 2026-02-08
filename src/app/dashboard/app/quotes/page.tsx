@@ -63,11 +63,19 @@ export default function StaffQuotesPage() {
 
         setUserRole(profileData.role);
 
+        if (!profileData.businessId) {
+          console.error('[Quotes] Business ID not found');
+          setLoading(false);
+          return;
+        }
+
+        const resolvedBusinessId = profileData.businessId;
+
         // Fetch quotes for this business
         let query = supabase
           .from('quotes')
           .select('*')
-          .eq('business_id', profileData.businessId)
+          .eq('business_id', resolvedBusinessId)
           .order('created_at', { ascending: false });
 
         if (statusFilter) {

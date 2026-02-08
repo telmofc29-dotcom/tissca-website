@@ -96,13 +96,21 @@ export default function CreateQuotePage() {
         }
 
         setUserRole(profileData.role);
-        setBusinessId(profileData.businessId);
+
+        if (!profileData.businessId) {
+          console.error('[NewQuote] Business ID not found');
+          setLoading(false);
+          return;
+        }
+
+        const resolvedBusinessId = profileData.businessId;
+        setBusinessId(resolvedBusinessId);
 
         // Fetch clients
         const { data: clientsData, error: clientsError } = await supabase
           .from('clients')
           .select('*')
-          .eq('business_id', profileData.businessId)
+          .eq('business_id', resolvedBusinessId)
           .order('name');
 
         if (clientsError) throw clientsError;
@@ -112,7 +120,7 @@ export default function CreateQuotePage() {
         const { data: materialsData, error: materialsError } = await supabase
           .from('materials')
           .select('*')
-          .eq('business_id', profileData.businessId)
+          .eq('business_id', resolvedBusinessId)
           .order('name');
 
         if (materialsError) throw materialsError;
@@ -122,7 +130,7 @@ export default function CreateQuotePage() {
         const { data: variantsData, error: variantsError } = await supabase
           .from('material_variants')
           .select('*')
-          .eq('business_id', profileData.businessId);
+          .eq('business_id', resolvedBusinessId);
 
         if (variantsError) throw variantsError;
         setVariants((variantsData as MaterialVariant[]) || []);
@@ -131,7 +139,7 @@ export default function CreateQuotePage() {
         const { data: labourData, error: labourError } = await supabase
           .from('labour_rates_new')
           .select('*')
-          .eq('business_id', profileData.business_id)
+          .eq('business_id', resolvedBusinessId)
           .order('trade');
 
         if (labourError) throw labourError;
@@ -213,6 +221,11 @@ export default function CreateQuotePage() {
       return;
     }
 
+    if (!supabase) {
+      console.error('[NewQuote] Supabase not initialized');
+      return;
+    }
+
     try {
       setSaving(true);
 
@@ -226,7 +239,7 @@ export default function CreateQuotePage() {
 
       let quoteNumber = `Q-${businessId.substring(0, 8).toUpperCase()}-000001`;
       if (existingQuotes && existingQuotes.length > 0) {
-        const lastNumber = existingQuotes[0].quote_number;
+        const lastNumber = (existingQuotes as any)[0].quote_number;
         const match = lastNumber.match(/-(\d+)$/);
         if (match) {
           const nextNum = (parseInt(match[1]) + 1).toString().padStart(6, '0');
@@ -235,7 +248,7 @@ export default function CreateQuotePage() {
       }
 
       // Create quote
-      const { data: quoteData, error: quoteError } = await supabase
+      const { data: quoteData, error: quoteError } = await (supabase as any)
         .from('quotes')
         .insert({
           business_id: businessId,
@@ -257,7 +270,7 @@ export default function CreateQuotePage() {
       // Add items
       const quoteId = quoteData.id;
       for (const item of items) {
-        await supabase.from('quote_items').insert({
+        await (supabase as any).from('quote_items').insert({
           quote_id: quoteId,
           description: item.description,
           quantity: item.quantity,
@@ -283,11 +296,16 @@ export default function CreateQuotePage() {
       return;
     }
 
+    if (!supabase) {
+      console.error('[NewQuote] Supabase not initialized');
+      return;
+    }
+
     try {
       setSaving(true);
 
       // Generate sequential quote number: get max from existing quotes and increment
-      const { data: existingQuotes } = await supabase
+      const { data: existingQuotes } = await (supabase as any)
         .from('quotes')
         .select('quote_number')
         .eq('business_id', businessId)
@@ -296,7 +314,7 @@ export default function CreateQuotePage() {
 
       let quoteNumber = `Q-${businessId.substring(0, 8).toUpperCase()}-000001`;
       if (existingQuotes && existingQuotes.length > 0) {
-        const lastNumber = existingQuotes[0].quote_number;
+        const lastNumber = (existingQuotes as any)[0].quote_number;
         const match = lastNumber.match(/-(\d+)$/);
         if (match) {
           const nextNum = (parseInt(match[1]) + 1).toString().padStart(6, '0');
@@ -305,7 +323,7 @@ export default function CreateQuotePage() {
       }
 
       // Create quote with 'sent' status
-      const { data: quoteData, error: quoteError } = await supabase
+      const { data: quoteData, error: quoteError } = await (supabase as any)
         .from('quotes')
         .insert({
           business_id: businessId,
@@ -328,7 +346,7 @@ export default function CreateQuotePage() {
       // Add items
       const quoteId = quoteData.id;
       for (const item of items) {
-        await supabase.from('quote_items').insert({
+        await (supabase as any).from('quote_items').insert({
           quote_id: quoteId,
           description: item.description,
           quantity: item.quantity,

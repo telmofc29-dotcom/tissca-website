@@ -66,7 +66,7 @@ export default function ClientInvoicesPage() {
         let query = supabase
           .from('invoices')
           .select('*')
-          .eq('client_id', profileData.clientId)
+          .eq('client_id', (profileData as any).clientId)
           .neq('status', 'draft')
           .order('created_at', { ascending: false });
 

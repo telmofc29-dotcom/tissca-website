@@ -44,6 +44,12 @@ export default function ClientInvoiceDetailPage() {
       try {
         setLoading(true);
 
+        if (!supabase) {
+          console.error('[ClientInvoice] Supabase not initialized');
+          setLoading(false);
+          return;
+        }
+
         // Get authenticated user
         const {
           data: { user },
@@ -76,7 +82,7 @@ export default function ClientInvoiceDetailPage() {
           .from('invoices')
           .select('*')
           .eq('id', invoiceId)
-          .eq('client_id', profileData.client_id)
+          .eq('client_id', (profileData as any).client_id)
           .neq('status', 'draft')
           .single();
 
@@ -91,10 +97,14 @@ export default function ClientInvoiceDetailPage() {
         const { data: clientData } = await supabase
           .from('clients')
           .select('*')
-          .eq('id', invoiceData.client_id)
+          .eq('id', (invoiceData as any).client_id)
           .single();
 
-        setClient(clientData as Client);
+        if (clientData) {
+          setClient(clientData as Client);
+        } else {
+          setClient(null);
+        }
 
         // Fetch items
         const { data: itemsData } = await supabase

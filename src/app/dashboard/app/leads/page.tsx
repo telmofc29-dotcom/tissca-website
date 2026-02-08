@@ -6,7 +6,6 @@ import { DashboardShell } from '@/components/layout/DashboardShell';
 import { getSupabaseClient, getUserProfile } from '@/lib/supabase';
 import { getLeads } from './actions';
 import LeadsTable from '@/components/leads/LeadsTable';
-import { formatDate } from '@/lib/utils';
 
 export default function LeadsPage() {
   const supabase = getSupabaseClient();
@@ -15,7 +14,6 @@ export default function LeadsPage() {
   const [error, setError] = useState<string>('');
   const [leads, setLeads] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<string>('');
-  const [userId, setUserId] = useState<string>('');
   const [filters, setFilters] = useState({
     status: 'All',
     search: '',
@@ -46,7 +44,6 @@ export default function LeadsPage() {
         }
 
         setUserRole(profile.role || 'staff');
-        setUserId(user.id);
 
         // Load leads
         const leadsData = await getLeads(user.id, {
@@ -202,7 +199,7 @@ export default function LeadsPage() {
         </div>
 
         {/* Leads Table */}
-        <LeadsTable leads={leads} userId={userId} onRefresh={() => window.location.reload()} />
+        <LeadsTable leads={leads} />
       </div>
     </DashboardShell>
   );

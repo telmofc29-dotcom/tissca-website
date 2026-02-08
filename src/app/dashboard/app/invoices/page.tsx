@@ -68,7 +68,7 @@ export default function StaffInvoicesPage() {
         let query = supabase
           .from('invoices')
           .select('*, client:clients(*)')
-          .eq('business_id', profileData.businessId)
+          .eq('business_id', profileData.businessId!)
           .order('created_at', { ascending: false });
 
         if (statusFilter) {

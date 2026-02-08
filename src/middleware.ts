@@ -66,9 +66,7 @@ export async function middleware(request: NextRequest) {
 
   // Refresh the session if it exists
   // This updates the cookie timestamps and ensures valid session
-  const {
-    data: { session },
-  } = await supabase.auth.getSession();
+  await supabase.auth.getSession();
 
   // Get the current user (uses session from cookies)
   const {

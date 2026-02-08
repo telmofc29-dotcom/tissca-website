@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { getSupabaseClient, getUserProfile } from '@/lib/supabase';
+import { getSupabaseClient } from '@/lib/supabase';
 import { createLead } from '../actions';
 
 export default function NewLeadPage() {
@@ -25,19 +25,24 @@ export default function NewLeadPage() {
     setLoading(true);
 
     try {
+      if (!supabase) {
+        setError('Supabase client not initialized');
+        setLoading(false);
+        return;
+      }
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push('/login');
         return;
       }
 
-      const newLead = await createLead(user.id, {
+      await createLead(user.id, {
         status: formData.status,
-        followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : null,
+        followUpDate: formData.followUpDate ? new Date(formData.followUpDate) : undefined,
         valueEstimate: formData.valueEstimate ? parseInt(formData.valueEstimate) : 0,
         tags: formData.tags ? formData.tags.split(',').map(t => t.trim()) : [],
-        notes: formData.notes || null,
-        source: formData.source || null,
+        notes: formData.notes || undefined,
+        source: formData.source || undefined,
       });
 
       router.push('/dashboard/app/leads');

@@ -14,7 +14,6 @@ export default function JobsPage() {
   const [error, setError] = useState<string>('');
   const [jobs, setJobs] = useState<any[]>([]);
   const [userRole, setUserRole] = useState<string>('');
-  const [userId, setUserId] = useState<string>('');
   const [filters, setFilters] = useState({
     status: 'All',
     sortBy: 'createdAt' as 'paymentDueDate' | 'scheduledDate' | 'createdAt',
@@ -44,7 +43,6 @@ export default function JobsPage() {
         }
 
         setUserRole(profile.role || 'staff');
-        setUserId(user.id);
 
         // Load jobs
         const jobsData = await getJobs(user.id, {
@@ -183,7 +181,7 @@ export default function JobsPage() {
         </div>
 
         {/* Jobs List */}
-        <JobsList jobs={jobs} userId={userId} onRefresh={() => window.location.reload()} />
+        <JobsList jobs={jobs} />
       </div>
     </DashboardShell>
   );

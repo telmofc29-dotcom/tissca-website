@@ -54,6 +54,12 @@ export default function ClientQuoteViewPage() {
       try {
         setLoading(true);
 
+        if (!supabase) {
+          console.error('[ClientQuoteDetail] Supabase not initialized');
+          setLoading(false);
+          return;
+        }
+
         // Get authenticated user
         const {
           data: { user },
@@ -86,7 +92,7 @@ export default function ClientQuoteViewPage() {
           .from('quotes')
           .select('*')
           .eq('id', quoteId)
-          .eq('client_id', profileData.client_id)
+          .eq('client_id', (profileData as any).client_id)
           .single();
 
         if (quoteError) throw quoteError;
@@ -132,6 +138,10 @@ export default function ClientQuoteViewPage() {
   const handleAcceptQuote = async () => {
     try {
       setUpdating(true);
+
+      if (!supabase) {
+        throw new Error('Supabase not initialized');
+      }
 
       const {
         data: { user },

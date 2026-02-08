@@ -15,14 +15,10 @@ interface Lead {
 
 interface LeadsTableProps {
   leads: Lead[];
-  userId: string;
-  onRefresh: () => void;
 }
 
 export default function LeadsTable({
   leads,
-  userId,
-  onRefresh,
 }: LeadsTableProps) {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {

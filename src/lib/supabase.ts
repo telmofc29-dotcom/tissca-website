@@ -196,11 +196,12 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
   }
 
   // Try to fetch existing profile
-  let { data: profile, error } = await client
+  const { data: profileData, error } = await client
     .from('user_profile')
     .select('*')
     .eq('userId', userId)
     .single();
+  let profile = profileData as UserProfile | null;
 
   // If profile doesn't exist, create a default one
   if (error && error.code === 'PGRST116') {
@@ -214,7 +215,7 @@ export async function getUserProfile(userId: string): Promise<UserProfile | null
         country: 'GB',
         currency: 'GBP',
         units: 'metric',
-      })
+      } as any)
       .select()
       .single();
     
@@ -278,7 +279,7 @@ export async function getOrCreateAppProfile(user: {
         email: user.email || '',
         full_name: fullName,
         plan: 'free',
-      })
+      } as any)
       .select('*')
       .single();
 
@@ -312,8 +313,7 @@ export async function updateAppProfile(
     throw new Error('[Supabase] Client not initialized');
   }
 
-  const { data, error } = await client
-    .from('profiles')
+  const { data, error } = await (client.from('profiles') as any)
     .update({
       ...updates,
       updated_at: new Date().toISOString(),

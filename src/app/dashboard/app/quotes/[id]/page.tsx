@@ -37,6 +37,7 @@ export default function ViewQuotePage() {
   const quoteId = params.id as string;
   const [userRole, setUserRole] = useState('');
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   // Quote data
   const [quote, setQuote] = useState<Quote | null>(null);
@@ -81,6 +82,12 @@ export default function ViewQuotePage() {
       try {
         setLoading(true);
 
+        if (!supabase) {
+          setError('Supabase client not initialized');
+          setLoading(false);
+          return;
+        }
+
         // Get authenticated user
         const {
           data: { user },
@@ -108,6 +115,14 @@ export default function ViewQuotePage() {
 
         setUserRole(profileData.role);
 
+        if (!profileData.businessId) {
+          setError('Business ID not found');
+          setLoading(false);
+          return;
+        }
+
+        const businessId = profileData.businessId;
+
         // Fetch clients
         const { data: clientsData } = await supabase
           .from('clients')
@@ -130,7 +145,7 @@ export default function ViewQuotePage() {
         const { data: variantsData } = await supabase
           .from('material_variants')
           .select('*')
-          .eq('business_id', profileData.business_id);
+          .eq('business_id', businessId);
 
         setVariants((variantsData as MaterialVariant[]) || []);
 
@@ -138,7 +153,7 @@ export default function ViewQuotePage() {
         const { data: labourData } = await supabase
           .from('labour_rates_new')
           .select('*')
-          .eq('business_id', profileData.business_id)
+          .eq('business_id', businessId)
           .order('trade');
 
         setLabourRates((labourData as LabourRate[]) || []);
@@ -148,7 +163,7 @@ export default function ViewQuotePage() {
           .from('quotes')
           .select('*')
           .eq('id', quoteId)
-          .eq('business_id', profileData.business_id)
+          .eq('business_id', businessId)
           .single();
 
         if (quoteError) throw quoteError;
@@ -185,10 +200,11 @@ export default function ViewQuotePage() {
           .single();
 
         if (invoiceData) {
-          setExistingInvoiceId(invoiceData.id);
+          setExistingInvoiceId((invoiceData as any).id);
         }
       } catch (error) {
         console.error('Error loading quote:', error);
+        setError(error instanceof Error ? error.message : 'Failed to load quote');
         router.push('/dashboard/app/quotes');
       } finally {
         setLoading(false);
@@ -264,11 +280,16 @@ export default function ViewQuotePage() {
       return;
     }
 
+    if (!supabase) {
+      setError('Supabase client not initialized');
+      return;
+    }
+
     try {
       setSaving(true);
 
       // Update quote
-      const { error: updateError } = await supabase
+      const { error: updateError } = await (supabase as any)
         .from('quotes')
         .update({
           client_id: clientId,
@@ -287,7 +308,7 @@ export default function ViewQuotePage() {
 
       // Add new items
       for (const item of items) {
-        await supabase.from('quote_items').insert({
+        await (supabase as any).from('quote_items').insert({
           quote_id: quoteId,
           description: item.description,
           quantity: item.quantity,
@@ -373,6 +394,16 @@ export default function ViewQuotePage() {
       <DashboardShell navItems={navItems} title="Quote" role={userRole as any}>
         <div className="flex items-center justify-center h-96">
           <div className="text-gray-500">Loading quote...</div>
+        </div>
+      </DashboardShell>
+    );
+  }
+
+  if (error) {
+    return (
+      <DashboardShell navItems={navItems} title="Quote" role={userRole as any}>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {error}
         </div>
       </DashboardShell>
     );

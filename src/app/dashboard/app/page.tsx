@@ -62,7 +62,6 @@ export default function ContractorDashboard() {
 
         // Check if profile has required fields
         const role = profile.role || 'staff'; // Default role if not set
-        const businessId = profile.businessId;
 
         // Only allow staff and accountant roles
         if (!['staff', 'accountant'].includes(role)) {

@@ -94,8 +94,8 @@ export async function protectRoute(
     );
   }
 
-  // Premium routes require premium subscription
-  if (protection === 'premium' && context.tier !== 'premium') {
+  // Premium routes require a paid subscription tier.
+  if (protection === 'premium' && context.tier === 'free') {
     return NextResponse.json(
       { error: 'Premium subscription required' },
       { status: 403 }

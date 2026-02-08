@@ -1,8 +1,7 @@
 'use server';
 
 import { prisma } from '@/lib/db';
-import { getCurrentUser } from '@/lib/auth';
-import { Lead } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 
 export async function getLeads(
   userId: string,
@@ -77,7 +76,7 @@ export async function createLead(
 export async function updateLead(
   userId: string,
   leadId: string,
-  data: Partial<Omit<Lead, 'id' | 'userId' | 'createdAt' | 'updatedAt'>>
+  data: Prisma.LeadUpdateInput
 ) {
   try {
     // Verify ownership

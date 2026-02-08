@@ -56,6 +56,11 @@ export function DashboardShell({
   }, [supabase]);
 
   const handleLogout = async () => {
+    if (!supabase) {
+      console.warn('[DashboardShell] Supabase not configured');
+      router.push('/login');
+      return;
+    }
     await supabase.auth.signOut();
     router.push('/login');
   };

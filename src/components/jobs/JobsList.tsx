@@ -16,14 +16,10 @@ interface Job {
 
 interface JobsListProps {
   jobs: Job[];
-  userId: string;
-  onRefresh: () => void;
 }
 
 export default function JobsList({
   jobs,
-  userId,
-  onRefresh,
 }: JobsListProps) {
   const getStatusBadgeColor = (status: string) => {
     switch (status) {

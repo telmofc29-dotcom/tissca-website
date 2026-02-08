@@ -9,13 +9,11 @@ export default function ClientDashboard() {
   const supabase = getSupabaseClient();
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string>('');
 
   useEffect(() => {
     const loadData = async () => {
       try {
         if (!supabase) {
-          setError('Supabase not configured');
           setLoading(false);
           return;
         }
@@ -45,7 +43,6 @@ export default function ClientDashboard() {
         setLoading(false);
       } catch (error) {
         console.error('Error loading client dashboard:', error);
-        setError(error instanceof Error ? error.message : 'Failed to load dashboard');
         setLoading(false);
       }
     };

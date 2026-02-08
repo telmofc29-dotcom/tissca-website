@@ -104,8 +104,13 @@ export default function StaffInvoiceDetailPage() {
         const { data: clientData } = await supabase
           .from('clients')
           .select('*')
-          .eq('id', invoiceData.client_id)
+          .eq('id', (invoiceData as any).client_id)
           .single();
+
+        if (!clientData) {
+          router.push('/dashboard/app/invoices');
+          return;
+        }
 
         setClient(clientData as Client);
 
