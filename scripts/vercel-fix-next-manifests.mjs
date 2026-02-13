@@ -1,20 +1,13 @@
-import fs from "fs/promises";
+import fs from "fs";
 import path from "path";
 
-async function exists(p) {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
-}
+function ensureFile(filePath, contents) {
+  // ✅ ALWAYS create the parent dir (even if it didn't exist)
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
 
-async function ensureFile(filePath, contents) {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-
-  if (!(await exists(filePath))) {
-    await fs.writeFile(filePath, contents, "utf8");
+  // ✅ ALWAYS ensure the file exists (this is what Next.js is lstat()'ing)
+  if (!fs.existsSync(filePath)) {
+    fs.writeFileSync(filePath, contents, "utf8");
     console.log("[vercel-fix] Created:", filePath);
   } else {
     console.log("[vercel-fix] Exists:", filePath);
@@ -23,24 +16,11 @@ async function ensureFile(filePath, contents) {
 
 const root = process.cwd();
 
-// Only run if Next build output exists (prevents creating fake .next in unexpected contexts)
-const nextServerAppDir = path.join(root, ".next", "server", "app");
-if (!(await exists(nextServerAppDir))) {
-  console.log("[vercel-fix] Skipped: .next/server/app not found");
-  process.exit(0);
-}
-
-// The one Vercel is failing on:
-// IMPORTANT: only create this if the route-group folder exists
-const publicGroupDir = path.join(nextServerAppDir, "(public)");
-if (await exists(publicGroupDir)) {
-  await ensureFile(
-    path.join(publicGroupDir, "page_client-reference-manifest.js"),
-    "module.exports = {};\n"
-  );
-} else {
-  console.log("[vercel-fix] Skipped: .next/server/app/(public) not found");
-}
+// ✅ The one Vercel is failing on (MUST exist by the end of the build)
+ensureFile(
+  path.join(root, ".next", "server", "app", "(public)", "page_client-reference-manifest.js"),
+  "module.exports = {};\n"
+);
 
 // (Optional) If you ever see the same error for other route groups,
 // you can add more ensureFile(...) lines here.
