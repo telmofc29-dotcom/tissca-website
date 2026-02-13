@@ -34,7 +34,8 @@
     "start": "next start",
     "lint": "next lint",
     "check-env": "node scripts/check-env.mjs",
-    "verify-phase-d": "node scripts/verify-phase-d.mjs"
+    "verify-phase-d": "node scripts/verify-phase-d.mjs",
+    "postbuild": "echo postbuild disabled (was: scripts/vercel-fix-next-manifests.mjs)"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
