@@ -52,25 +52,20 @@ export interface QuoteInvoice {
   total: number;
 }
 
+const documentCounters: Record<'quote' | 'invoice', number> = {
+  quote: 0,
+  invoice: 0,
+};
+
 /**
  * DOCUMENT NUMBERING
  * Generate sequential numbers for quotes and invoices.
- * Placeholder for future database storage.
+ * Process-local counter only (server-safe).
+ * Replace with database sequence for persistent/global ordering.
  */
-
-// In production, these would be stored per-user in a database
-const documentCounters = {
-  quote: parseInt(typeof localStorage !== 'undefined' ? localStorage.getItem('quoteCounter') || '0' : '0'),
-  invoice: parseInt(typeof localStorage !== 'undefined' ? localStorage.getItem('invoiceCounter') || '0' : '0'),
-};
-
 export function getNextDocumentNumber(type: 'quote' | 'invoice'): string {
-  const counter = documentCounters[type] + 1;
-  documentCounters[type] = counter;
-
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem(`${type}Counter`, counter.toString());
-  }
+  documentCounters[type] += 1;
+  const counter = documentCounters[type];
 
   const prefix = type === 'quote' ? 'Q' : 'INV';
   return `${prefix}-${String(counter).padStart(6, '0')}`;
@@ -85,9 +80,7 @@ export function calculateLineItemTotal(quantity: number, unitPrice: number): num
 }
 
 export function calculateSubtotal(lineItems: LineItem[]): number {
-  return Math.round(
-    lineItems.reduce((sum, item) => sum + item.total, 0) * 100
-  ) / 100;
+  return Math.round(lineItems.reduce((sum, item) => sum + item.total, 0) * 100) / 100;
 }
 
 export function calculateVAT(subtotal: number, vatRate: number): number {

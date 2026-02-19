@@ -54,21 +54,18 @@ export interface DocumentData {
   paymentTerms?: number;
 }
 
+const documentCounters: Record<'quote' | 'invoice', number> = {
+  quote: 0,
+  invoice: 0,
+};
+
 /**
  * Get next sequential number
- * Storage: localStorage for now, can migrate to DB
+ * Process-local counter only (server-safe)
  */
 export function getNextDocumentNumber(type: 'quote' | 'invoice'): string {
-  const key = `${type}_counter`;
-  let counter = 0;
-
-  if (typeof window !== 'undefined') {
-    counter = parseInt(localStorage.getItem(key) || '0', 10) + 1;
-    localStorage.setItem(key, counter.toString());
-  } else {
-    // Server-side fallback (e.g., mobile API)
-    counter = Math.floor(Math.random() * 10000) + 1;
-  }
+  documentCounters[type] += 1;
+  const counter = documentCounters[type];
 
   const prefix = type === 'quote' ? 'Q' : 'INV';
   return `${prefix}-${String(counter).padStart(6, '0')}`;
