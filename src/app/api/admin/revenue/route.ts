@@ -3,6 +3,8 @@ import { getAdminRevenueData } from '@/lib/db';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { getUserBySupabaseId } from '@/lib/db';
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/admin/revenue
  * Get revenue data for accountant panel

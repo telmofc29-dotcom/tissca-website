@@ -3,6 +3,8 @@ import { getAdminUsers } from '@/lib/db';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { getUserBySupabaseId } from '@/lib/db';
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/admin/users
  * Get all users for admin dashboard

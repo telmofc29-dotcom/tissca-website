@@ -3,9 +3,10 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
 
-  // v1.0.2 (FIX: Vercel build ENOENT on traced path .next/server/app/(public)/page_client-reference-manifest.js)
-  // Disable output tracing so the build doesn't lstat route-group paths that aren't emitted as folders.
-  outputFileTracing: false,
+  // IMPORTANT:
+  // Do NOT disable output file tracing on Vercel.
+  // Vercel relies on tracing to include Next.js server/app artifacts in the runtime bundle.
+  // outputFileTracing: false,
 
   images: {
     formats: ["image/avif", "image/webp"],

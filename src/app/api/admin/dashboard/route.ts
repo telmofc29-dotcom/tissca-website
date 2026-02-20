@@ -3,6 +3,8 @@ import { getAdminUserCount, getAdminPremiumCount, getAdminDocumentsOverview } fr
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { getUserBySupabaseId } from '@/lib/db';
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/admin/dashboard
  * Get admin dashboard overview data
