@@ -28,15 +28,17 @@
       }
     ]
   },
+  "engines": {
+    "node": "20.x"
+  },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
-    "vercel-build": "next build && node scripts/vercel-fix-next-manifests.mjs",
+    "build": "next build && node scripts/vercel-fix-next-manifests.mjs",
+    "vercel-build": "npm run build",
     "start": "next start",
     "lint": "next lint",
     "check-env": "node scripts/check-env.mjs",
-    "verify-phase-d": "node scripts/verify-phase-d.mjs",
-    "postbuild": "node scripts/vercel-fix-next-manifests.mjs"
+    "verify-phase-d": "node scripts/verify-phase-d.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.2",
