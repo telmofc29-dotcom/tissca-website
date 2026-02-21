@@ -11,3 +11,8 @@ out/
 .idea/
 *.swp
 *.swo
+.env*.local
+
+# local/build output
+server/
+.vercel/
