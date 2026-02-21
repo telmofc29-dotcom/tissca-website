@@ -33,7 +33,8 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "next build && node scripts/vercel-fix-next-manifests.mjs",
+    "build": "next build",
+    "postbuild": "node scripts/vercel-fix-next-manifests.mjs",
     "vercel-build": "npm run build",
     "start": "next start",
     "lint": "next lint",
