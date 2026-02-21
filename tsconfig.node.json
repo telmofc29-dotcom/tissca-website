@@ -3,7 +3,10 @@
     "composite": true,
     "skipLibCheck": true,
     "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true
+    "allowSyntheticDefaultImports": true,
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "types": ["node"]
   },
-  "include": ["next.config.js", "postcss.config.js"]
+  "include": ["scripts/**/*", "next.config.*", "postcss.config.*", "tailwind.config.*"]
 }

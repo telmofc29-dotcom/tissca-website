@@ -1,3 +1,5 @@
+// src/app/(public)/page.tsx
+
 import Link from 'next/link';
 import { Metadata } from 'next';
 import { brandConfig } from '@/config/brand';
@@ -20,7 +22,7 @@ export default function HomePage() {
             <p className="text-xl text-gray-200 mb-4">{brandConfig.tagline}</p>
             <p className="text-lg text-gray-300 mb-8 leading-relaxed">
               The global reference for construction, renovations, workmanship standards,
-              and calculations. Learn how to do it right, spot what's wrong, and avoid costly mistakes.
+              and calculations. Learn how to do it right, spot what&apos;s wrong, and avoid costly mistakes.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
               <Link
@@ -164,7 +166,7 @@ export default function HomePage() {
               <li className="flex gap-4">
                 <span className="text-accent font-bold text-xl flex-shrink-0">✓</span>
                 <p>
-                  <strong>Accessible to all:</strong> Whether you're a homeowner, tradesperson,
+                  <strong>Accessible to all:</strong> Whether you&apos;re a homeowner, tradesperson,
                   or student, we make construction knowledge clear and practical.
                 </p>
               </li>

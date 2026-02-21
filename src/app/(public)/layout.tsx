@@ -1,26 +1,17 @@
-'use client';
+// src/app/(public)/layout.tsx
 
-import { AuthProvider } from '@/context/auth-context';
-import { generateDefaultJsonLd } from '@/config/metadata';
-import { GlobalHeader } from '@/components/GlobalHeader';
-import { GlobalFooter } from '@/components/GlobalFooter';
+import type { Metadata } from 'next';
+import { brandConfig } from '@/config/brand';
+
+export const metadata: Metadata = {
+  title: brandConfig.displayName,
+  description: brandConfig.description,
+};
 
 export default function PublicLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return (
-    <AuthProvider>
-      <>
-        <script
-          type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(generateDefaultJsonLd()) }}
-        />
-        <GlobalHeader />
-        <main className="min-h-[calc(100vh-16rem)]">{children}</main>
-        <GlobalFooter />
-      </>
-    </AuthProvider>
-  );
+  return <>{children}</>;
 }
