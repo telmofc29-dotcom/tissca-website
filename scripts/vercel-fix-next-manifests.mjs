@@ -1,14 +1,17 @@
 // scripts/vercel-fix-next-manifests.mjs
-// v2.3.4 (PROOF-BASED: prune missing manifest refs that cause Vercel lstat ENOENT)
-// - Keeps v2.3.3 intent:
+// v2.3.5 (PROOF-BASED: add fallback source manifest discovery to prevent Next runtime "clientModules" crash)
+// - Keeps v2.3.4 intent:
 //     - patch required-server-files.json
 //     - patch *.js.nft.json traces to include client-reference manifests
 //     - Fix Path A: align repo-root /server/** from required-server-files.json
 //     - Ensure _not-found and not-found variants (best-effort)
-// - NEW (v2.3.4):
 //     - PRUNE stale references to missing files from required-server-files.json
 //     - PRUNE targeted stale references from *.js.nft.json (only manifest refs)
-//   This directly prevents Vercel from lstat()'ing paths that do not exist.
+// - NEW (v2.3.5):
+//     - If base server/app/page_client-reference-manifest.js or layout_client-reference-manifest.js is missing,
+//       discover ANY existing manifest under server/app/** and use it as a fallback source.
+//       This is required to avoid Next.js 14 runtime: "Cannot read properties of undefined (reading 'clientModules')"
+//       when route groups like (public) are missing their manifests.
 // - Never fail build; exits 0 on any mismatch.
 
 import fs from "node:fs";
@@ -225,6 +228,20 @@ function patchAllNftTraces(serverAppDir) {
   return { nftCount: nftFiles.length, patchedCount, totalAdded };
 }
 
+// NEW (v2.3.5): discover any manifest as fallback source if the base one is missing
+function findAnyManifest(serverAppDir, filename) {
+  try {
+    const files = walkFiles(serverAppDir);
+    // Prefer shallow paths first (more likely canonical), but any is acceptable as fallback.
+    const matches = files
+      .filter((p) => p.replace(/\\/g, "/").endsWith(`/${filename}`))
+      .sort((a, b) => a.length - b.length);
+    return matches.length ? matches[0] : null;
+  } catch {
+    return null;
+  }
+}
+
 function alignRepoRootServerFilesFromRequired(nextRoot, requiredPath) {
   if (!exists(requiredPath)) return { ok: false, reason: "required-server-files.json missing" };
 
@@ -267,9 +284,24 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
   // Ensure both "_not-found" and "not-found" manifests exist (best-effort).
   // Copy source priority:
   //   1) base manifest in server/app
-  //   2) the other variant (if already created)
+  //   2) fallback discovered manifest (v2.3.5)
+  //   3) the other variant (if already created)
+
   const basePage = path.join(serverAppDir, "page_client-reference-manifest.js");
   const baseLayout = path.join(serverAppDir, "layout_client-reference-manifest.js");
+
+  const fallbackPage = exists(basePage) ? null : findAnyManifest(serverAppDir, "page_client-reference-manifest.js");
+  const fallbackLayout = exists(baseLayout) ? null : findAnyManifest(serverAppDir, "layout_client-reference-manifest.js");
+
+  const srcPage = exists(basePage) ? basePage : fallbackPage;
+  const srcLayout = exists(baseLayout) ? baseLayout : fallbackLayout;
+
+  if (!exists(basePage) && fallbackPage) {
+    log("FALLBACK page manifest:", relFrom(nextRoot, fallbackPage));
+  }
+  if (!exists(baseLayout) && fallbackLayout) {
+    log("FALLBACK layout manifest:", relFrom(nextRoot, fallbackLayout));
+  }
 
   const undersDir = path.join(serverAppDir, "_not-found");
   const normalDir = path.join(serverAppDir, "not-found");
@@ -282,10 +314,15 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 
   // Only create dirs if there is at least some source we could copy from.
   const canMakeAny =
-    exists(basePage) || exists(baseLayout) || exists(undersPage) || exists(normalPage) || exists(undersLayout) || exists(normalLayout);
+    (srcPage && exists(srcPage)) ||
+    (srcLayout && exists(srcLayout)) ||
+    exists(undersPage) ||
+    exists(normalPage) ||
+    exists(undersLayout) ||
+    exists(normalLayout);
 
   if (!canMakeAny) {
-    log("not-found variants: no base/variant manifests exist; skip creating folders/files.");
+    log("not-found variants: no base/fallback/variant manifests exist; skip creating folders/files.");
     return;
   }
 
@@ -294,9 +331,9 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 
   // PAGE: create _not-found
   if (!exists(undersPage)) {
-    if (exists(basePage)) {
-      const r = tryCopy(basePage, undersPage);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, basePage), "->", relFrom(nextRoot, undersPage));
+    if (srcPage && exists(srcPage)) {
+      const r = tryCopy(srcPage, undersPage);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, srcPage), "->", relFrom(nextRoot, undersPage));
     } else if (exists(normalPage)) {
       const r = tryCopy(normalPage, undersPage);
       if (r.ok) log("COPIED:", relFrom(nextRoot, normalPage), "->", relFrom(nextRoot, undersPage));
@@ -305,9 +342,9 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 
   // PAGE: create not-found
   if (!exists(normalPage)) {
-    if (exists(basePage)) {
-      const r = tryCopy(basePage, normalPage);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, basePage), "->", relFrom(nextRoot, normalPage));
+    if (srcPage && exists(srcPage)) {
+      const r = tryCopy(srcPage, normalPage);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, srcPage), "->", relFrom(nextRoot, normalPage));
     } else if (exists(undersPage)) {
       const r = tryCopy(undersPage, normalPage);
       if (r.ok) log("COPIED:", relFrom(nextRoot, undersPage), "->", relFrom(nextRoot, normalPage));
@@ -316,9 +353,9 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 
   // LAYOUT: create _not-found
   if (!exists(undersLayout)) {
-    if (exists(baseLayout)) {
-      const r = tryCopy(baseLayout, undersLayout);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, baseLayout), "->", relFrom(nextRoot, undersLayout));
+    if (srcLayout && exists(srcLayout)) {
+      const r = tryCopy(srcLayout, undersLayout);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, srcLayout), "->", relFrom(nextRoot, undersLayout));
     } else if (exists(normalLayout)) {
       const r = tryCopy(normalLayout, undersLayout);
       if (r.ok) log("COPIED:", relFrom(nextRoot, normalLayout), "->", relFrom(nextRoot, undersLayout));
@@ -327,9 +364,9 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 
   // LAYOUT: create not-found
   if (!exists(normalLayout)) {
-    if (exists(baseLayout)) {
-      const r = tryCopy(baseLayout, normalLayout);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, baseLayout), "->", relFrom(nextRoot, normalLayout));
+    if (srcLayout && exists(srcLayout)) {
+      const r = tryCopy(srcLayout, normalLayout);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, srcLayout), "->", relFrom(nextRoot, normalLayout));
     } else if (exists(undersLayout)) {
       const r = tryCopy(undersLayout, normalLayout);
       if (r.ok) log("COPIED:", relFrom(nextRoot, undersLayout), "->", relFrom(nextRoot, normalLayout));
@@ -452,12 +489,25 @@ function runForRoot(nextRoot) {
     return;
   }
 
-  // 1) Route group copy fallback for ROOT page manifest
+  // 1) Route group copy fallback for ROOT page manifest (v2.3.5 adds fallback discovery)
   const basePageManifest = path.join(serverApp, "page_client-reference-manifest.js");
   const baseLayoutManifest = path.join(serverApp, "layout_client-reference-manifest.js");
 
+  const fallbackPageManifest = exists(basePageManifest) ? null : findAnyManifest(serverApp, "page_client-reference-manifest.js");
+  const fallbackLayoutManifest = exists(baseLayoutManifest) ? null : findAnyManifest(serverApp, "layout_client-reference-manifest.js");
+
+  const sourcePageManifest = exists(basePageManifest) ? basePageManifest : fallbackPageManifest;
+  const sourceLayoutManifest = exists(baseLayoutManifest) ? baseLayoutManifest : fallbackLayoutManifest;
+
   log("base page manifest:", exists(basePageManifest) ? "FOUND" : "MISSING");
   log("base layout manifest:", exists(baseLayoutManifest) ? "FOUND" : "MISSING");
+
+  if (!exists(basePageManifest) && fallbackPageManifest) {
+    log("FALLBACK page manifest:", relFrom(nextRoot, fallbackPageManifest));
+  }
+  if (!exists(baseLayoutManifest) && fallbackLayoutManifest) {
+    log("FALLBACK layout manifest:", relFrom(nextRoot, fallbackLayoutManifest));
+  }
 
   // 1.1) Ensure both not-found variants exist (best-effort)
   ensureNotFoundVariants(serverApp, nextRoot);
@@ -470,10 +520,10 @@ function runForRoot(nextRoot) {
 
   for (const g of groups) {
     const destPage = path.join(serverApp, g, "page_client-reference-manifest.js");
-    if (exists(basePageManifest) && !exists(destPage)) {
-      const r = tryCopy(basePageManifest, destPage);
+    if (sourcePageManifest && exists(sourcePageManifest) && !exists(destPage)) {
+      const r = tryCopy(sourcePageManifest, destPage);
       if (r.ok) {
-        log("COPIED:", relFrom(nextRoot, basePageManifest), "->", relFrom(nextRoot, destPage));
+        log("COPIED:", relFrom(nextRoot, sourcePageManifest), "->", relFrom(nextRoot, destPage));
         copiedCount++;
       } else {
         log("COPY FAILED:", g, r.err);
@@ -483,10 +533,10 @@ function runForRoot(nextRoot) {
     }
 
     const destLayout = path.join(serverApp, g, "layout_client-reference-manifest.js");
-    if (exists(baseLayoutManifest) && !exists(destLayout)) {
-      const r2 = tryCopy(baseLayoutManifest, destLayout);
+    if (sourceLayoutManifest && exists(sourceLayoutManifest) && !exists(destLayout)) {
+      const r2 = tryCopy(sourceLayoutManifest, destLayout);
       if (r2.ok) {
-        log("COPIED:", relFrom(nextRoot, baseLayoutManifest), "->", relFrom(nextRoot, destLayout));
+        log("COPIED:", relFrom(nextRoot, sourceLayoutManifest), "->", relFrom(nextRoot, destLayout));
         copiedCount++;
       }
     }
