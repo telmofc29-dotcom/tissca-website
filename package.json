@@ -35,7 +35,7 @@
     "dev": "next dev",
     "build": "next build",
     "postbuild": "node scripts/vercel-fix-next-manifests.mjs",
-    "vercel-build": "npm run build",
+    "vercel-build": "next build && node scripts/vercel-fix-next-manifests.mjs",
     "start": "next start",
     "lint": "next lint",
     "check-env": "node scripts/check-env.mjs",
