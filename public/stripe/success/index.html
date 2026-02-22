@@ -1,0 +1,426 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,address=no,email=no" />
+  <title>TISSCA — Payment Successful</title>
+
+  <style>
+    :root{
+      /* ============================================================
+         CARVALHO / TISSCA PREMIUM PALETTE (LOCKED HEX)
+         ============================================================ */
+      --blue:#2d4152;
+      --gold1:#CBB26B;
+      --gold2:#be9e43;
+      --goldDeep:#9a7f35;
+      --goldDark:#746028;
+      --white:#ffffff;
+
+      /* Premium neutrals derived from blue (NOT purple, NOT brown) */
+      --bg:#0b141b;
+      --bg2:#0e1a23;
+      --card:rgba(16,28,38,.78);
+      --card2:rgba(20,36,48,.62);
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.70);
+
+      --border:rgba(255,255,255,.10);
+      --borderSoft:rgba(255,255,255,.08);
+
+      /* Glows (subtle) */
+      --blueGlow: rgba(45,65,82,.35);
+      --goldGlow: rgba(203,178,107,.22);
+      --goldGlow2: rgba(190,158,67,.16);
+
+      --ok: rgba(101, 242, 168, .85);
+      --warn: rgba(255, 208, 128, .90);
+      --bad: rgba(255, 118, 118, .90);
+    }
+
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background: radial-gradient(1200px 900px at 50% 20%, rgba(45,65,82,.22), transparent 60%),
+                  radial-gradient(900px 700px at 20% 80%, rgba(203,178,107,.10), transparent 62%),
+                  linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      overflow-x:hidden;
+    }
+
+    .ambient{
+      position:fixed;
+      inset:-20%;
+      z-index:-3;
+      background:
+        radial-gradient(950px 720px at 30% 22%, rgba(45,65,82,.34), transparent 62%),
+        radial-gradient(900px 700px at 75% 70%, rgba(203,178,107,.14), transparent 62%),
+        radial-gradient(1200px 900px at 55% 48%, rgba(255,255,255,.05), transparent 70%);
+      filter: blur(18px);
+      animation: ambientFloat 16s ease-in-out infinite;
+      transform: translate3d(0,0,0);
+      opacity:.9;
+    }
+    @keyframes ambientFloat{
+      0%   { transform: translate3d(-2%, -1%, 0) scale(1); }
+      50%  { transform: translate3d( 2%,  1%, 0) scale(1.03); }
+      100% { transform: translate3d(-2%, -1%, 0) scale(1); }
+    }
+
+    .noise{
+      position:fixed;
+      inset:0;
+      z-index:-2;
+      pointer-events:none;
+      opacity:.055;
+      mix-blend-mode:overlay;
+      background-image:
+        repeating-linear-gradient(0deg,
+          rgba(255,255,255,.03) 0px,
+          rgba(255,255,255,.03) 1px,
+          transparent 2px,
+          transparent 4px),
+        repeating-linear-gradient(90deg,
+          rgba(0,0,0,.05) 0px,
+          rgba(0,0,0,.05) 1px,
+          transparent 2px,
+          transparent 5px);
+      animation: noiseShift 7s steps(6) infinite;
+      transform: translate3d(0,0,0);
+    }
+    @keyframes noiseShift{
+      0%   { transform: translate3d(0,0,0); }
+      20%  { transform: translate3d(-2%,1%,0); }
+      40%  { transform: translate3d(1%,-2%,0); }
+      60%  { transform: translate3d(2%,2%,0); }
+      80%  { transform: translate3d(-1%,-1%,0); }
+      100% { transform: translate3d(0,0,0); }
+    }
+
+    .wrap{padding:24px}
+    .card{
+      max-width:760px;
+      margin:11vh auto;
+      background: linear-gradient(180deg, var(--card), rgba(16,28,38,.62));
+      border-radius:28px;
+      padding:40px;
+      border:1px solid var(--borderSoft);
+      box-shadow:
+        0 28px 90px rgba(0,0,0,.58),
+        0 0 0 1px rgba(45,65,82,.14),
+        inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(12px);
+    }
+
+    h1{
+      margin:0 0 10px 0;
+      font-size:34px;
+      letter-spacing:-0.65px;
+      line-height:1.1;
+    }
+    p{
+      margin:12px 0;
+      line-height:1.7;
+      color:var(--muted);
+      font-size:15px;
+    }
+
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:10px;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.12);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+      color: rgba(255,255,255,.86);
+      font-weight:800;
+      letter-spacing:.2px;
+    }
+    .dot{
+      width:9px;height:9px;border-radius:99px;
+      background: var(--warn);
+      box-shadow: 0 0 0 4px rgba(255,208,128,.10);
+    }
+    .dot.ok{
+      background: var(--ok);
+      box-shadow: 0 0 0 4px rgba(101,242,168,.12);
+    }
+    .dot.bad{
+      background: var(--bad);
+      box-shadow: 0 0 0 4px rgba(255,118,118,.10);
+    }
+
+    .code{
+      display:block;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas;
+      background: linear-gradient(180deg, rgba(45,65,82,.30), rgba(20,36,48,.24));
+      border:1px solid rgba(255,255,255,.12);
+      padding:10px 12px;
+      border-radius:14px;
+      margin-top:10px;
+      font-size:13px;
+      color:var(--text);
+      max-width:100%;
+      overflow:auto;
+      white-space:nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    .row{
+      margin-top:26px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    a.btn{
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:14px 22px;
+      border-radius:999px;
+      font-weight:850;
+      text-decoration:none;
+      letter-spacing:.2px;
+      min-width:240px;
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, border-color .22s ease;
+      overflow:hidden;
+      transform: translate3d(0,0,0);
+    }
+
+    a.primary{
+      color: rgba(255,255,255,.92);
+      background:
+        radial-gradient(900px 200px at 20% 0%, rgba(203,178,107,.18), transparent 55%),
+        linear-gradient(145deg, rgba(45,65,82,.92), rgba(20,36,48,.86));
+      box-shadow:
+        0 14px 44px rgba(0,0,0,.46),
+        0 0 0 1px rgba(45,65,82,.18),
+        0 0 28px rgba(45,65,82,.18),
+        inset 0 1px 0 rgba(255,255,255,.10);
+    }
+
+    a.secondary{
+      color: rgba(255,255,255,.90);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      box-shadow:
+        0 12px 36px rgba(0,0,0,.44),
+        inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    a.btn::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      border-radius:999px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(203,178,107,.20), transparent 68%),
+        radial-gradient(circle at 50% 50%, rgba(45,65,82,.28), transparent 70%);
+      opacity:0;
+      transition: opacity .25s ease;
+      pointer-events:none;
+    }
+
+    a.btn::after{
+      content:"";
+      position:absolute;
+      top:-40%;
+      left:-60%;
+      width:60%;
+      height:180%;
+      background: linear-gradient(120deg,
+        transparent 0%,
+        rgba(255,255,255,.16) 26%,
+        rgba(203,178,107,.14) 36%,
+        rgba(255,255,255,.06) 46%,
+        transparent 70%);
+      transform: rotate(16deg);
+      opacity:.34;
+      animation: sheen 6.6s ease-in-out infinite;
+      pointer-events:none;
+      mix-blend-mode: soft-light;
+    }
+    @keyframes sheen{
+      0%   { left:-60%; opacity:.10; }
+      30%  { opacity:.34; }
+      55%  { opacity:.16; }
+      100% { left:120%; opacity:.10; }
+    }
+
+    a.btn:hover{
+      transform: translateY(-2px);
+      border-color: rgba(203,178,107,.22);
+      box-shadow:
+        0 18px 58px rgba(0,0,0,.55),
+        0 0 0 1px rgba(203,178,107,.12),
+        0 0 34px rgba(45,65,82,.18),
+        inset 0 1px 0 rgba(255,255,255,.10);
+    }
+    a.btn:hover::before{ opacity:1; }
+
+    a.btn:active{
+      transform: translateY(0);
+      box-shadow:
+        0 12px 34px rgba(0,0,0,.46),
+        inset 0 2px 6px rgba(0,0,0,.28);
+    }
+
+    .meta{
+      margin-top:18px;
+      font-size:12px;
+      color:rgba(255,255,255,.52);
+    }
+
+    @media (max-width: 600px){
+      .card{padding:28px}
+      a.btn{min-width: 100%}
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .ambient,.noise,a.btn::after{animation:none}
+      a.btn{transition:none}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ambient"></div>
+  <div class="noise"></div>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="pill" id="statusPill">
+        <span class="dot" id="statusDot"></span>
+        <span id="statusText">Finalising your subscription…</span>
+      </div>
+
+      <h1>Welcome to TISSCA Premium</h1>
+
+      <p id="desc">
+        Thank you — your payment was successful. We’re activating your plan now.
+        You can safely return to the app.
+      </p>
+
+      <p style="margin-top:18px;">
+        Reference
+        <span class="code" id="ref">Loading…</span>
+      </p>
+
+      <div class="row">
+        <a class="btn primary" id="openApp" href="tissca://billing/success" rel="noopener">
+          Open TISSCA app
+        </a>
+        <a class="btn secondary" id="backWeb" href="https://tissca.com" rel="noopener">
+          Back to website
+        </a>
+      </div>
+
+      <div class="meta" id="meta">
+        If your plan doesn’t appear immediately, close and reopen the app once.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ============================================================
+    // CONFIG (edit these only)
+    // ============================================================
+    // This should be your Edge Function endpoint that verifies Stripe session
+    // and updates the workspace plan in Supabase.
+    //
+    // Example:
+    //   https://ovkpblbnnvnmsulrrnor.supabase.co/functions/v1/stripe-verify-checkout
+    //
+    const VERIFY_ENDPOINT = ""; // <-- SET THIS (or leave empty to disable verification)
+
+    // Optional: if you prefer the success page to route somewhere else on web
+    const WEB_FALLBACK = "https://tissca.com";
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+    const params = new URLSearchParams(location.search);
+    const sessionId = params.get("session_id") || "";
+    const refEl = document.getElementById("ref");
+    const statusDot = document.getElementById("statusDot");
+    const statusText = document.getElementById("statusText");
+    const meta = document.getElementById("meta");
+    const desc = document.getElementById("desc");
+
+    // Show a stable reference
+    refEl.textContent = sessionId || ("TISSCA-" + Math.random().toString(16).slice(2,10).toUpperCase());
+
+    // Attempt deep link open
+    // (Some browsers block auto-open; the button remains the reliable path.)
+    setTimeout(() => {
+      try { /* no-op */ } catch {}
+    }, 250);
+
+    function setState(type, text, metaText){
+      statusDot.classList.remove("ok","bad");
+      if (type === "ok") statusDot.classList.add("ok");
+      if (type === "bad") statusDot.classList.add("bad");
+      statusText.textContent = text;
+      if (metaText) meta.textContent = metaText;
+    }
+
+    async function verify(){
+      if (!VERIFY_ENDPOINT || !sessionId) {
+        setState("ok", "Payment successful", "You can return to the app.");
+        return;
+      }
+
+      // This success page is static, so we can't securely sign anything here.
+      // We simply ask the server (Edge Function) to verify the session with Stripe
+      // and update Supabase accordingly.
+      try{
+        const res = await fetch(VERIFY_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId })
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok) {
+          setState(
+            "bad",
+            "Payment received — activation pending",
+            "If your plan doesn’t update in 1–2 minutes, open the app and try again."
+          );
+          return;
+        }
+
+        const plan = data?.plan_tier ? String(data.plan_tier).toUpperCase() : null;
+
+        setState(
+          "ok",
+          "Subscription activated",
+          plan ? (`Plan active: ${plan}. You can return to the app.`) : ("You can return to the app.")
+        );
+
+        desc.textContent =
+          "Thank you — your subscription is now active. Your premium features will be available in the app.";
+
+      } catch (e){
+        setState(
+          "bad",
+          "Payment received — activation pending",
+          "If your plan doesn’t update, close and reopen the app once."
+        );
+      }
+    }
+
+    verify();
+  </script>
+</body>
+</html>

@@ -1,0 +1,353 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="x-apple-disable-message-reformatting" />
+  <meta name="format-detection" content="telephone=no,address=no,email=no" />
+  <title>TISSCA — Invitation</title>
+
+  <style>
+    :root{
+      /* ============================================================
+         CARVALHO / TISSCA PREMIUM PALETTE (LOCKED HEX)
+         ============================================================ */
+      --blue:#2d4152;
+      --gold1:#CBB26B;
+      --gold2:#be9e43;
+      --goldDeep:#9a7f35;
+      --goldDark:#746028;
+      --white:#ffffff;
+
+      /* Premium neutrals derived from blue (NOT purple, NOT brown) */
+      --bg:#0b141b;
+      --bg2:#0e1a23;
+      --card:rgba(16,28,38,.78);
+      --card2:rgba(20,36,48,.62);
+      --text:rgba(255,255,255,.92);
+      --muted:rgba(255,255,255,.70);
+
+      --border:rgba(255,255,255,.10);
+      --borderSoft:rgba(255,255,255,.08);
+
+      /* Glows (subtle) */
+      --blueGlow: rgba(45,65,82,.35);
+      --goldGlow: rgba(203,178,107,.22);
+      --goldGlow2: rgba(190,158,67,.16);
+    }
+
+    html,body{height:100%}
+    body{
+      margin:0;
+      font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial;
+      background: radial-gradient(1200px 900px at 50% 20%, rgba(45,65,82,.22), transparent 60%),
+                  radial-gradient(900px 700px at 20% 80%, rgba(203,178,107,.10), transparent 62%),
+                  linear-gradient(180deg, var(--bg), var(--bg2));
+      color:var(--text);
+      -webkit-font-smoothing:antialiased;
+      overflow-x:hidden;
+    }
+
+    /* 1) SUBTLE AMBIENT BACKGROUND ANIMATION */
+    .ambient{
+      position:fixed;
+      inset:-20%;
+      z-index:-3;
+      background:
+        radial-gradient(950px 720px at 30% 22%, rgba(45,65,82,.34), transparent 62%),
+        radial-gradient(900px 700px at 75% 70%, rgba(203,178,107,.14), transparent 62%),
+        radial-gradient(1200px 900px at 55% 48%, rgba(255,255,255,.05), transparent 70%);
+      filter: blur(18px);
+      animation: ambientFloat 16s ease-in-out infinite;
+      transform: translate3d(0,0,0);
+      opacity:.9;
+    }
+    @keyframes ambientFloat{
+      0%   { transform: translate3d(-2%, -1%, 0) scale(1); }
+      50%  { transform: translate3d( 2%,  1%, 0) scale(1.03); }
+      100% { transform: translate3d(-2%, -1%, 0) scale(1); }
+    }
+
+    /* 3) SOFT NOISE TEXTURE OVERLAY */
+    .noise{
+      position:fixed;
+      inset:0;
+      z-index:-2;
+      pointer-events:none;
+      opacity:.055;
+      mix-blend-mode:overlay;
+      background-image:
+        repeating-linear-gradient(0deg,
+          rgba(255,255,255,.03) 0px,
+          rgba(255,255,255,.03) 1px,
+          transparent 2px,
+          transparent 4px),
+        repeating-linear-gradient(90deg,
+          rgba(0,0,0,.05) 0px,
+          rgba(0,0,0,.05) 1px,
+          transparent 2px,
+          transparent 5px);
+      animation: noiseShift 7s steps(6) infinite;
+      transform: translate3d(0,0,0);
+    }
+    @keyframes noiseShift{
+      0%   { transform: translate3d(0,0,0); }
+      20%  { transform: translate3d(-2%,1%,0); }
+      40%  { transform: translate3d(1%,-2%,0); }
+      60%  { transform: translate3d(2%,2%,0); }
+      80%  { transform: translate3d(-1%,-1%,0); }
+      100% { transform: translate3d(0,0,0); }
+    }
+
+    .wrap{padding:24px}
+    .card{
+      max-width:700px;
+      margin:12vh auto;
+      background: linear-gradient(180deg, var(--card), rgba(16,28,38,.62));
+      border-radius:28px;
+      padding:40px;
+      border:1px solid var(--borderSoft);
+      box-shadow:
+        0 28px 90px rgba(0,0,0,.58),
+        0 0 0 1px rgba(45,65,82,.14),
+        inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(12px);
+    }
+
+    h1{
+      margin:0 0 12px 0;
+      font-size:34px;
+      letter-spacing:-0.65px;
+      line-height:1.1;
+    }
+    p{
+      margin:12px 0;
+      line-height:1.7;
+      color:var(--muted);
+      font-size:15px;
+    }
+
+    .code{
+      display:inline-block;
+      font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas;
+      background: linear-gradient(180deg, rgba(45,65,82,.30), rgba(20,36,48,.24));
+      border:1px solid rgba(255,255,255,.12);
+      padding:9px 12px;
+      border-radius:14px;
+      margin-top:8px;
+      font-size:13px;
+      color:var(--text);
+      max-width:100%;
+      overflow:auto;
+      white-space:nowrap;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    .row{
+      margin-top:26px;
+      display:flex;
+      gap:12px;
+      flex-wrap:wrap;
+      align-items:center;
+    }
+
+    /* 2) EDGE SHIMMER SWEEP + premium hover halo */
+    a.btn{
+      position:relative;
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      padding:14px 22px;
+      border-radius:999px;
+      font-weight:850;
+      text-decoration:none;
+      letter-spacing:.2px;
+      min-width:240px;
+      border: 1px solid rgba(255,255,255,.12);
+      transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, border-color .22s ease;
+      overflow:hidden;
+      transform: translate3d(0,0,0);
+    }
+
+    /* Primary: BLUE-led gradient, GOLD is only a luxury highlight */
+    a.primary{
+      color: rgba(255,255,255,.92);
+      background:
+        radial-gradient(900px 200px at 20% 0%, rgba(203,178,107,.18), transparent 55%),
+        linear-gradient(145deg, rgba(45,65,82,.92), rgba(20,36,48,.86));
+      box-shadow:
+        0 14px 44px rgba(0,0,0,.46),
+        0 0 0 1px rgba(45,65,82,.18),
+        0 0 28px rgba(45,65,82,.18),
+        inset 0 1px 0 rgba(255,255,255,.10);
+    }
+
+    /* Secondary: quieter glass */
+    a.secondary{
+      color: rgba(255,255,255,.90);
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      box-shadow:
+        0 12px 36px rgba(0,0,0,.44),
+        inset 0 1px 0 rgba(255,255,255,.06);
+    }
+
+    /* Halo */
+    a.btn::before{
+      content:"";
+      position:absolute;
+      inset:-2px;
+      border-radius:999px;
+      background:
+        radial-gradient(circle at 50% 50%, rgba(203,178,107,.20), transparent 68%),
+        radial-gradient(circle at 50% 50%, rgba(45,65,82,.28), transparent 70%);
+      opacity:0;
+      transition: opacity .25s ease;
+      pointer-events:none;
+    }
+
+    /* Shimmer sweep (champagne sheen, subtle) */
+    a.btn::after{
+      content:"";
+      position:absolute;
+      top:-40%;
+      left:-60%;
+      width:60%;
+      height:180%;
+      background: linear-gradient(120deg,
+        transparent 0%,
+        rgba(255,255,255,.16) 26%,
+        rgba(203,178,107,.14) 36%,
+        rgba(255,255,255,.06) 46%,
+        transparent 70%);
+      transform: rotate(16deg);
+      opacity:.34;
+      animation: sheen 6.6s ease-in-out infinite;
+      pointer-events:none;
+      mix-blend-mode: soft-light;
+    }
+    @keyframes sheen{
+      0%   { left:-60%; opacity:.10; }
+      30%  { opacity:.34; }
+      55%  { opacity:.16; }
+      100% { left:120%; opacity:.10; }
+    }
+
+    a.btn:hover{
+      transform: translateY(-2px);
+      border-color: rgba(203,178,107,.22);
+      box-shadow:
+        0 18px 58px rgba(0,0,0,.55),
+        0 0 0 1px rgba(203,178,107,.12),
+        0 0 34px rgba(45,65,82,.18),
+        inset 0 1px 0 rgba(255,255,255,.10);
+    }
+    a.btn:hover::before{ opacity:1; }
+
+    a.btn:active{
+      transform: translateY(0);
+      box-shadow:
+        0 12px 34px rgba(0,0,0,.46),
+        inset 0 2px 6px rgba(0,0,0,.28);
+    }
+
+    .meta{
+      margin-top:18px;
+      font-size:12px;
+      color:rgba(255,255,255,.52);
+    }
+
+    @media (max-width: 600px){
+      .card{padding:28px}
+      a.btn{min-width: 100%}
+    }
+
+    @media (prefers-reduced-motion: reduce){
+      .ambient,.noise,a.btn::after{animation:none}
+      a.btn{transition:none}
+    }
+  </style>
+</head>
+
+<body>
+  <div class="ambient"></div>
+  <div class="noise"></div>
+
+  <div class="wrap">
+    <div class="card">
+      <h1>You’re invited to TISSCA</h1>
+
+      <p id="desc">
+        We’re opening your invitation. If the app doesn’t launch automatically, you can install it below and try again.
+      </p>
+
+      <p>
+        Invitation links look like:
+        <span class="code" id="example">https://tissca.com/invite/&lt;inviteId&gt;</span>
+      </p>
+
+      <div class="row">
+        <a class="btn primary" id="primaryCta" href="https://tissca.com" rel="noopener">Continue</a>
+        <a class="btn secondary" id="secondaryCta" href="https://tissca.com" rel="noopener">Visit website</a>
+      </div>
+
+      <div class="meta" id="meta">
+        TISSCA — Professional workspace management for modern teams.
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const PLAY_STORE_URL = "https://play.google.com/store";
+    const APP_STORE_URL  = "https://apps.apple.com/"; // replace later
+    const WEB_URL        = "https://tissca.com";
+
+    const ua = navigator.userAgent || "";
+    const isAndroid = /Android/i.test(ua);
+    const isIOS = /iPhone|iPad|iPod/i.test(ua);
+
+    const primary = document.getElementById("primaryCta");
+    const secondary = document.getElementById("secondaryCta");
+    const desc = document.getElementById("desc");
+    const example = document.getElementById("example");
+
+    // ✅ Extract inviteId from /invite/<inviteId>
+    const path = window.location.pathname || "";
+    const parts = path.split("/").filter(Boolean);
+    const inviteId = (parts.length >= 2 && parts[0] === "invite") ? parts[1] : null;
+
+    // ✅ Deep link should include inviteId so the app can open the correct invitation
+    const deepLink = inviteId ? `tissca://invite/${inviteId}` : "tissca://invite/";
+
+    // Update example to show the actual link (if we have it)
+    if (inviteId) {
+      example.textContent = `https://tissca.com/invite/${inviteId}`;
+    }
+
+    if (isAndroid) {
+      primary.textContent = "Download for Android";
+      primary.href = PLAY_STORE_URL;
+
+      secondary.textContent = "Open the app";
+      secondary.href = deepLink;
+
+      desc.textContent = "If the app doesn’t launch automatically, install it below — then open the invitation link again.";
+    } else if (isIOS) {
+      primary.textContent = "Download for iPhone";
+      primary.href = APP_STORE_URL;
+
+      secondary.textContent = "Open the app";
+      secondary.href = deepLink;
+
+      desc.textContent = "If the app doesn’t launch automatically, install it below — then open the invitation link again.";
+    } else {
+      primary.textContent = "Continue on web";
+      primary.href = WEB_URL;
+
+      secondary.textContent = "Get the app";
+      secondary.href = PLAY_STORE_URL;
+
+      desc.textContent = "If you opened an invite link on a phone and the app didn’t launch automatically, install the app and try again.";
+    }
+  </script>
+</body>
+</html>

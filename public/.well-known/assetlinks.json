@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.tissca.app",
+      "sha256_cert_fingerprints": [
+        "23:D3:28:BB:F9:B4:48:5B:45:0D:6C:17:1D:AC:31:CD:DC:8E:38:D6:ED:5D:A7:8E:79:58:1A:DD:B6:FE:F5:9F"
+      ]
+    }
+  }
+]

@@ -5,18 +5,27 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="x-apple-disable-message-reformatting" />
   <meta name="format-detection" content="telephone=no,address=no,email=no" />
-  <title>TISSCA — Verified</title>
+  <title>TISSCA — Reset Password</title>
 
   <style>
     :root{
       --blue:#2d4152;
       --gold1:#CBB26B;
+      --gold2:#be9e43;
+      --goldDeep:#9a7f35;
+      --goldDark:#746028;
+      --white:#ffffff;
+
       --bg:#0b141b;
       --bg2:#0e1a23;
+
       --card:rgba(16,28,38,.78);
       --text:rgba(255,255,255,.92);
       --muted:rgba(255,255,255,.70);
+
+      --field:rgba(255,255,255,.06);
       --border:rgba(255,255,255,.12);
+
       --danger:#ffb4b4;
     }
 
@@ -83,20 +92,36 @@
     h1{margin:0 0 10px;font-size:28px;letter-spacing:-0.2px;}
     p{margin:10px 0;line-height:1.55;color:var(--muted);}
 
-    .row{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap;}
-
-    a.btn{
-      position:relative;
-      display:inline-flex;align-items:center;justify-content:center;
-      padding:12px 16px;border-radius:999px;
-      text-decoration:none;font-weight:800;letter-spacing:.2px;
-      min-width:220px;
-      border:1px solid rgba(255,255,255,.12);
-      overflow:hidden;
-      transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, border-color .22s ease;
+    label{display:block;margin-top:12px;font-size:13px;color:rgba(255,255,255,.66);}
+    input{
+      width:100%;
+      padding:12px 14px;
+      border-radius:12px;
+      border:1px solid var(--border);
+      background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.04));
+      color:var(--text);
+      margin-top:8px;
+      outline:none;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.06);
+    }
+    input:focus{
+      border-color: rgba(203,178,107,.28);
+      box-shadow: 0 0 0 4px rgba(203,178,107,.12), inset 0 1px 0 rgba(255,255,255,.06);
     }
 
-    a.primary{
+    .row{display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;}
+
+    button,a.btn{
+      position:relative;
+      display:inline-flex;align-items:center;justify-content:center;gap:10px;
+      padding:12px 16px;border-radius:999px;border:1px solid rgba(255,255,255,.12);
+      cursor:pointer;text-decoration:none;font-weight:800;letter-spacing:.2px;
+      overflow:hidden;
+      transition: transform .22s cubic-bezier(.22,1,.36,1), box-shadow .22s ease, border-color .22s ease;
+      min-width:220px;
+    }
+
+    button.primary{
       color: rgba(255,255,255,.92);
       background:
         radial-gradient(900px 200px at 20% 0%, rgba(203,178,107,.18), transparent 55%),
@@ -114,7 +139,7 @@
       box-shadow: 0 12px 36px rgba(0,0,0,.44), inset 0 1px 0 rgba(255,255,255,.06);
     }
 
-    a.btn::after{
+    button::after,a.btn::after{
       content:"";
       position:absolute;top:-40%;left:-60%;
       width:60%;height:180%;
@@ -132,16 +157,24 @@
       100%{left:120%;opacity:.10}
     }
 
-    a.btn:hover{
+    button:hover,a.btn:hover{
       transform: translateY(-2px);
       border-color: rgba(203,178,107,.22);
       box-shadow: 0 18px 58px rgba(0,0,0,.55), 0 0 0 1px rgba(203,178,107,.12), inset 0 1px 0 rgba(255,255,255,.10);
     }
-    a.btn:active{transform: translateY(0);}
+    button:active,a.btn:active{transform: translateY(0);}
 
-    .err{margin-top:12px;color:var(--danger);font-size:13px;line-height:1.45;display:none;}
+    button:disabled{opacity:.65;cursor:not-allowed;}
+
+    .hint{font-size:13px;margin-top:10px;color:rgba(255,255,255,.62);}
+    .err{margin-top:12px;color:var(--danger);font-size:13px;line-height:1.45;}
     .debug{display:none;margin-top:12px;font-size:12px;color:rgba(255,255,255,.50);word-break:break-all;}
     .footer{margin-top:14px;font-size:12px;color:rgba(255,255,255,.50);}
+
+    @media (prefers-reduced-motion: reduce){
+      .ambient,.noise,button::after,a.btn::after{animation:none}
+      button,a.btn{transition:none}
+    }
   </style>
 </head>
 
@@ -151,18 +184,28 @@
 
   <div class="wrap">
     <div class="card">
-      <h1 id="title">Working…</h1>
-      <p id="msg">Please wait while we confirm your request.</p>
+      <h1 id="title">Preparing reset…</h1>
+      <p id="msg">Please wait while we open your reset link.</p>
 
-      <div class="row" id="actions" style="display:none;">
-        <a class="btn primary" href="tissca://auth/callback">Open the app</a>
-        <a class="btn secondary" href="https://tissca.com">Continue on web</a>
+      <div id="form" style="display:none;">
+        <label for="pw1">New password</label>
+        <input id="pw1" type="password" placeholder="Enter a new password" autocomplete="new-password" />
+
+        <label for="pw2">Confirm new password</label>
+        <input id="pw2" type="password" placeholder="Confirm the new password" autocomplete="new-password" />
+
+        <div class="row">
+          <button id="btn" class="primary" type="button">Update password</button>
+          <a id="openApp" class="btn secondary" href="tissca://auth/callback" style="display:none;">Open the app</a>
+        </div>
+
+        <div class="hint">Tip: Use a strong password (8+ characters). After updating, you can return to the app and sign in.</div>
       </div>
 
-      <div id="err" class="err"></div>
+      <div id="err" class="err" style="display:none;"></div>
       <div id="debug" class="debug"></div>
 
-      <div class="footer">TISSCA — secure verification</div>
+      <div class="footer">TISSCA — secure account recovery</div>
     </div>
   </div>
 
@@ -176,60 +219,39 @@
 
     const title = document.getElementById("title");
     const msg = document.getElementById("msg");
-    const actions = document.getElementById("actions");
+    const form = document.getElementById("form");
+    const pw1 = document.getElementById("pw1");
+    const pw2 = document.getElementById("pw2");
+    const btn = document.getElementById("btn");
+    const openApp = document.getElementById("openApp");
     const errBox = document.getElementById("err");
     const debug = document.getElementById("debug");
 
-    function setError(text, showDebug = false) {
-      title.textContent = "Something went wrong";
-      msg.textContent = "We couldn’t complete this request.";
+    function setError(text, showDebugFlag = false) {
       errBox.style.display = "block";
       errBox.textContent = text;
-      if (showDebug) {
+      if (showDebugFlag) {
         debug.style.display = "block";
         debug.textContent = window.location.href;
       }
     }
 
-    function normaliseType(input) {
-      const t = (input || "signup").toLowerCase().trim();
-
-      // Map your template-friendly names → Supabase expected types
-      if (t === "reset") return "recovery";
-      if (t === "recovery") return "recovery";
-
-      if (t === "magic") return "magiclink";
-      if (t === "magiclink") return "magiclink";
-
-      if (t === "change_email") return "email_change";
-      if (t === "email_change") return "email_change";
-      if (t === "email_change" || t === "emailchange") return "email_change";
-
-      if (t === "invite") return "invite";
-      if (t === "signup") return "signup";
-
-      // Default safe
-      return "signup";
+    function showForm() {
+      form.style.display = "block";
     }
 
-    function setSuccess(type) {
-      const t = normaliseType(type);
+    function showSuccess() {
+      title.textContent = "Password updated";
+      msg.textContent = "All done — you can now go back to the app and sign in.";
+      form.style.display = "none";
+      openApp.style.display = "inline-flex";
+    }
 
-      if (t === "email_change") {
-        title.textContent = "Email confirmed";
-        msg.textContent = "Your email address has been updated. You can now return to the app and sign in using your new email.";
-      } else if (t === "magiclink") {
-        title.textContent = "Signed in";
-        msg.textContent = "You’re signed in securely. You can now return to the app.";
-      } else if (t === "invite") {
-        title.textContent = "Invitation accepted";
-        msg.textContent = "Thanks — your invitation has been accepted. You can now open the app.";
-      } else {
-        title.textContent = "Email verified";
-        msg.textContent = "Thank you — your email has been verified. You can now return to the app and sign in.";
-      }
-
-      actions.style.display = "flex";
+    function normaliseType(input) {
+      const t = (input || "recovery").toLowerCase().trim();
+      if (t === "reset") return "recovery";     // 👈 key fix for your templates
+      if (t === "recovery") return "recovery";
+      return "recovery"; // reset page should always be recovery
     }
 
     function parseParams() {
@@ -239,27 +261,32 @@
       const hash = (window.location.hash || "").replace(/^#/, "");
       const h = new URLSearchParams(hash);
 
-      const tokenFromQuery = q.get("token") || null;
-      const tokenHashFromQuery = q.get("token_hash") || null;
-
       return {
         code: q.get("code") || null,
         type: q.get("type") || null,
-        token_hash: tokenHashFromQuery || tokenFromQuery || null,
 
-        // Hash params (some flows)
+        // Raw-token flow
+        token: q.get("token") || null,
+        email: q.get("email") || null,
+
+        // token_hash flow
+        token_hash: q.get("token_hash") || null,
+
+        // Hash session flow
         access_token: h.get("access_token") || null,
         refresh_token: h.get("refresh_token") || null
       };
     }
 
     async function establishSessionFromLink(p) {
+      // 1) PKCE/code flow
       if (p.code) {
         const { error } = await supabase.auth.exchangeCodeForSession(p.code);
         if (error) throw error;
         return;
       }
 
+      // 2) token_hash flow (STRICT: only token_hash + type)
       if (p.token_hash) {
         const { error } = await supabase.auth.verifyOtp({
           token_hash: p.token_hash,
@@ -269,6 +296,18 @@
         return;
       }
 
+      // 3) token + email flow (older template style)
+      if (p.token && p.email) {
+        const { error } = await supabase.auth.verifyOtp({
+          token: p.token,
+          email: p.email,
+          type: normaliseType(p.type)
+        });
+        if (error) throw error;
+        return;
+      }
+
+      // 4) access_token hash flow
       if (p.access_token && p.refresh_token) {
         const { error } = await supabase.auth.setSession({
           access_token: p.access_token,
@@ -278,15 +317,52 @@
         return;
       }
 
-      throw new Error("Missing verification parameters in the link.");
+      throw new Error("Missing reset parameters in the link.");
     }
 
     (async () => {
       try {
         const p = parseParams();
         await establishSessionFromLink(p);
-        setSuccess(p.type);
+
+        title.textContent = "Reset your password";
+        msg.textContent = "Enter a new password below.";
+        showForm();
+        openApp.style.display = "inline-flex";
+
+        btn.addEventListener("click", async () => {
+          errBox.style.display = "none";
+          btn.disabled = true;
+          btn.textContent = "Updating…";
+
+          try {
+            const a = (pw1.value || "").trim();
+            const b = (pw2.value || "").trim();
+
+            if (!a || a.length < 8) {
+              setError("Password must be at least 8 characters.");
+              return;
+            }
+            if (a !== b) {
+              setError("Passwords do not match.");
+              return;
+            }
+
+            const { error } = await supabase.auth.updateUser({ password: a });
+            if (error) throw error;
+
+            showSuccess();
+          } catch (e) {
+            setError(e?.message || "Could not update password. Please try again.", true);
+          } finally {
+            btn.disabled = false;
+            btn.textContent = "Update password";
+          }
+        });
+
       } catch (e) {
+        title.textContent = "Reset link issue";
+        msg.textContent = "We couldn’t open your reset link.";
         setError(e?.message || "Unknown error.", true);
       }
     })();
