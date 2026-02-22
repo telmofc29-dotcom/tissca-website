@@ -1,18 +1,17 @@
 // scripts/vercel-fix-next-manifests.mjs
-// v2.3.5 (PROOF-BASED: add fallback source manifest discovery to prevent Next runtime "clientModules" crash)
-// - Keeps v2.3.4 intent:
+// v2.4.1 (HOTFIX: prune legacy-bad manifest refs inside patchNftTrace to prevent Vercel lstat ENOENT)
+// - Keeps v2.4.0 intent:
 //     - patch required-server-files.json
 //     - patch *.js.nft.json traces to include client-reference manifests
 //     - Fix Path A: align repo-root /server/** from required-server-files.json
 //     - Ensure _not-found and not-found variants (best-effort)
-//     - PRUNE stale references to missing files from required-server-files.json
-//     - PRUNE targeted stale references from *.js.nft.json (only manifest refs)
-// - NEW (v2.3.5):
-//     - If base server/app/page_client-reference-manifest.js or layout_client-reference-manifest.js is missing,
-//       discover ANY existing manifest under server/app/** and use it as a fallback source.
-//       This is required to avoid Next.js 14 runtime: "Cannot read properties of undefined (reading 'clientModules')"
-//       when route groups like (public) are missing their manifests.
-// - Never fail build; exits 0 on any mismatch.
+//     - PRUNE stale references to missing files (required-server-files + targeted NFT manifest refs)
+// - HOTFIX (v2.4.1):
+//     - Some builds still retain legacy bad refs like ".next/server/app/_not-found/page_client-reference-manifest.js"
+//       inside *.js.nft.json. Vercel resolves these RELATIVE to the nft dir, creating double-prefixed paths:
+//         ".../_not-found/.next/server/app/_not-found/page_client-reference-manifest.js"
+//       which causes build-time ENOENT lstat failures.
+//     - Fix: prune legacy-bad manifest refs AND missing manifest refs *inside patchNftTrace* before writing.
 
 import fs from "node:fs";
 import path from "node:path";
@@ -66,11 +65,6 @@ function walkFiles(dir) {
 function relFrom(nextRoot, absPath) {
   // required-server-files.json expects paths like "server/app/..."
   return path.relative(nextRoot, absPath).replace(/\\/g, "/");
-}
-
-function relFromRepo(absPath) {
-  // NFT traces generally expect paths relative to repo root (process.cwd()).
-  return path.relative(process.cwd(), absPath).replace(/\\/g, "/");
 }
 
 function findRouteGroups(serverAppDir) {
@@ -128,40 +122,17 @@ function patchRequiredServerFiles(nextRoot, requiredPath, extraFilesAbs) {
   return { ok: true, added, total: json.files.length };
 }
 
-function patchNftTrace(nftPath, manifestAbsList) {
-  // Add manifest files into the nft json "files" list (repo-relative).
-  if (!exists(nftPath)) return { ok: false, reason: "nft missing" };
-
-  let json;
-  try {
-    json = readJson(nftPath);
-  } catch (e) {
-    return { ok: false, reason: `failed to read nft json: ${String(e?.message ?? e)}` };
-  }
-
-  if (!Array.isArray(json.files)) json.files = [];
-
-  const before = new Set(json.files);
-  let added = 0;
-
-  for (const abs of manifestAbsList) {
-    const rel = relFromRepo(abs);
-    if (!before.has(rel)) {
-      json.files.push(rel);
-      before.add(rel);
-      added++;
+function dedupeStrings(list) {
+  const seen = new Set();
+  const out = [];
+  for (const s of list) {
+    const norm = String(s).replace(/\\/g, "/");
+    if (!seen.has(norm)) {
+      seen.add(norm);
+      out.push(norm);
     }
   }
-
-  if (added === 0) return { ok: true, added: 0 };
-
-  try {
-    writeJson(nftPath, json);
-  } catch (e) {
-    return { ok: false, reason: `failed to write nft json: ${String(e?.message ?? e)}` };
-  }
-
-  return { ok: true, added };
+  return out;
 }
 
 function dedupeAbs(list) {
@@ -188,6 +159,94 @@ function findNearestServerAppRoot(fromDir) {
     cur = parent;
   }
   return null;
+}
+
+function relFromNftDir(nftPath, absFile) {
+  // ✅ KEY FIX:
+  // NFT "files" entries must be resolvable from the runtime packaging context.
+  // Writing repo-root ".next/server/..." can cause Vercel to resolve it relative to the nft dir,
+  // producing: ".next/server/app/_not-found/.next/server/app/_not-found/..."
+  const base = path.dirname(nftPath);
+  let rel = path.relative(base, absFile).replace(/\\/g, "/");
+  if (!rel.startsWith(".") && !rel.startsWith("/")) rel = "./" + rel;
+  return rel;
+}
+
+function isManifestRef(rel) {
+  return (
+    typeof rel === "string" &&
+    rel.replace(/\\/g, "/").includes("client-reference-manifest") &&
+    rel.endsWith(".js")
+  );
+}
+
+function isLegacyBadRef(rel) {
+  // Legacy-bad entries include ".next/server/" prefix and will double-prefix when resolved from nft dir.
+  return (
+    typeof rel === "string" &&
+    rel.replace(/\\/g, "/").includes(".next/server/") &&
+    rel.replace(/\\/g, "/").includes("client-reference-manifest") &&
+    rel.endsWith(".js")
+  );
+}
+
+function patchNftTrace(nftPath, manifestAbsList) {
+  // Add manifest files into the nft json "files" list (RELATIVE TO NFT DIR).
+  // HOTFIX: prune legacy-bad manifest refs and missing manifest refs BEFORE writing.
+  if (!exists(nftPath)) return { ok: false, reason: "nft missing" };
+
+  let json;
+  try {
+    json = readJson(nftPath);
+  } catch (e) {
+    return { ok: false, reason: `failed to read nft json: ${String(e?.message ?? e)}` };
+  }
+
+  if (!Array.isArray(json.files)) json.files = [];
+
+  const nftDir = path.dirname(nftPath);
+
+  // ✅ HOTFIX: clean existing list first so legacy-bad refs cannot survive.
+  const cleaned = [];
+  for (const rel of json.files) {
+    if (!isManifestRef(rel)) {
+      cleaned.push(rel);
+      continue;
+    }
+
+    // Always drop legacy-bad refs
+    if (isLegacyBadRef(rel)) continue;
+
+    // Drop missing manifest refs (resolve relative to nft dir)
+    const abs = path.resolve(nftDir, rel);
+    if (exists(abs)) cleaned.push(rel);
+  }
+
+  const before = new Set(dedupeStrings(cleaned));
+  const next = [...before];
+
+  let added = 0;
+
+  for (const abs of manifestAbsList) {
+    const rel = relFromNftDir(nftPath, abs);
+    if (!before.has(rel)) {
+      next.push(rel);
+      before.add(rel);
+      added++;
+    }
+  }
+
+  if (added === 0 && cleaned.length === json.files.length) return { ok: true, added: 0 };
+
+  json.files = next;
+
+  try {
+    writeJson(nftPath, json);
+  } catch (e) {
+    return { ok: false, reason: `failed to write nft json: ${String(e?.message ?? e)}` };
+  }
+
+  return { ok: true, added };
 }
 
 function patchAllNftTraces(serverAppDir) {
@@ -226,20 +285,6 @@ function patchAllNftTraces(serverAppDir) {
   }
 
   return { nftCount: nftFiles.length, patchedCount, totalAdded };
-}
-
-// NEW (v2.3.5): discover any manifest as fallback source if the base one is missing
-function findAnyManifest(serverAppDir, filename) {
-  try {
-    const files = walkFiles(serverAppDir);
-    // Prefer shallow paths first (more likely canonical), but any is acceptable as fallback.
-    const matches = files
-      .filter((p) => p.replace(/\\/g, "/").endsWith(`/${filename}`))
-      .sort((a, b) => a.length - b.length);
-    return matches.length ? matches[0] : null;
-  } catch {
-    return null;
-  }
 }
 
 function alignRepoRootServerFilesFromRequired(nextRoot, requiredPath) {
@@ -282,26 +327,8 @@ function alignRepoRootServerFilesFromRequired(nextRoot, requiredPath) {
 
 function ensureNotFoundVariants(serverAppDir, nextRoot) {
   // Ensure both "_not-found" and "not-found" manifests exist (best-effort).
-  // Copy source priority:
-  //   1) base manifest in server/app
-  //   2) fallback discovered manifest (v2.3.5)
-  //   3) the other variant (if already created)
-
   const basePage = path.join(serverAppDir, "page_client-reference-manifest.js");
   const baseLayout = path.join(serverAppDir, "layout_client-reference-manifest.js");
-
-  const fallbackPage = exists(basePage) ? null : findAnyManifest(serverAppDir, "page_client-reference-manifest.js");
-  const fallbackLayout = exists(baseLayout) ? null : findAnyManifest(serverAppDir, "layout_client-reference-manifest.js");
-
-  const srcPage = exists(basePage) ? basePage : fallbackPage;
-  const srcLayout = exists(baseLayout) ? baseLayout : fallbackLayout;
-
-  if (!exists(basePage) && fallbackPage) {
-    log("FALLBACK page manifest:", relFrom(nextRoot, fallbackPage));
-  }
-  if (!exists(baseLayout) && fallbackLayout) {
-    log("FALLBACK layout manifest:", relFrom(nextRoot, fallbackLayout));
-  }
 
   const undersDir = path.join(serverAppDir, "_not-found");
   const normalDir = path.join(serverAppDir, "not-found");
@@ -312,61 +339,56 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
   const undersLayout = path.join(undersDir, "layout_client-reference-manifest.js");
   const normalLayout = path.join(normalDir, "layout_client-reference-manifest.js");
 
-  // Only create dirs if there is at least some source we could copy from.
   const canMakeAny =
-    (srcPage && exists(srcPage)) ||
-    (srcLayout && exists(srcLayout)) ||
+    exists(basePage) ||
+    exists(baseLayout) ||
     exists(undersPage) ||
     exists(normalPage) ||
     exists(undersLayout) ||
     exists(normalLayout);
 
   if (!canMakeAny) {
-    log("not-found variants: no base/fallback/variant manifests exist; skip creating folders/files.");
+    log("not-found variants: no base/variant manifests exist; skip creating folders/files.");
     return;
   }
 
   ensureDir(undersDir);
   ensureDir(normalDir);
 
-  // PAGE: create _not-found
   if (!exists(undersPage)) {
-    if (srcPage && exists(srcPage)) {
-      const r = tryCopy(srcPage, undersPage);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, srcPage), "->", relFrom(nextRoot, undersPage));
+    if (exists(basePage)) {
+      const r = tryCopy(basePage, undersPage);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, basePage), "->", relFrom(nextRoot, undersPage));
     } else if (exists(normalPage)) {
       const r = tryCopy(normalPage, undersPage);
       if (r.ok) log("COPIED:", relFrom(nextRoot, normalPage), "->", relFrom(nextRoot, undersPage));
     }
   }
 
-  // PAGE: create not-found
   if (!exists(normalPage)) {
-    if (srcPage && exists(srcPage)) {
-      const r = tryCopy(srcPage, normalPage);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, srcPage), "->", relFrom(nextRoot, normalPage));
+    if (exists(basePage)) {
+      const r = tryCopy(basePage, normalPage);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, basePage), "->", relFrom(nextRoot, normalPage));
     } else if (exists(undersPage)) {
       const r = tryCopy(undersPage, normalPage);
       if (r.ok) log("COPIED:", relFrom(nextRoot, undersPage), "->", relFrom(nextRoot, normalPage));
     }
   }
 
-  // LAYOUT: create _not-found
   if (!exists(undersLayout)) {
-    if (srcLayout && exists(srcLayout)) {
-      const r = tryCopy(srcLayout, undersLayout);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, srcLayout), "->", relFrom(nextRoot, undersLayout));
+    if (exists(baseLayout)) {
+      const r = tryCopy(baseLayout, undersLayout);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, baseLayout), "->", relFrom(nextRoot, undersLayout));
     } else if (exists(normalLayout)) {
       const r = tryCopy(normalLayout, undersLayout);
       if (r.ok) log("COPIED:", relFrom(nextRoot, normalLayout), "->", relFrom(nextRoot, undersLayout));
     }
   }
 
-  // LAYOUT: create not-found
   if (!exists(normalLayout)) {
-    if (srcLayout && exists(srcLayout)) {
-      const r = tryCopy(srcLayout, normalLayout);
-      if (r.ok) log("COPIED:", relFrom(nextRoot, srcLayout), "->", relFrom(nextRoot, normalLayout));
+    if (exists(baseLayout)) {
+      const r = tryCopy(baseLayout, normalLayout);
+      if (r.ok) log("COPIED:", relFrom(nextRoot, baseLayout), "->", relFrom(nextRoot, normalLayout));
     } else if (exists(undersLayout)) {
       const r = tryCopy(undersLayout, normalLayout);
       if (r.ok) log("COPIED:", relFrom(nextRoot, undersLayout), "->", relFrom(nextRoot, normalLayout));
@@ -375,7 +397,7 @@ function ensureNotFoundVariants(serverAppDir, nextRoot) {
 }
 
 function pruneRequiredServerFilesMissing(nextRoot, requiredPath) {
-  // PROOF-BASED: remove entries that point to files that do NOT exist under nextRoot.
+  // Remove entries that point to files that do NOT exist under nextRoot.
   if (!exists(requiredPath)) return { ok: false, reason: "required-server-files.json missing" };
 
   let json;
@@ -394,8 +416,6 @@ function pruneRequiredServerFilesMissing(nextRoot, requiredPath) {
   for (const rel of files) {
     if (typeof rel !== "string") continue;
     const abs = path.join(nextRoot, rel);
-
-    // Keep only if the file exists.
     if (exists(abs)) kept.push(rel);
     else removed++;
   }
@@ -414,8 +434,9 @@ function pruneRequiredServerFilesMissing(nextRoot, requiredPath) {
 }
 
 function pruneNftTracesMissingManifestRefs(serverAppDir) {
-  // PROOF-BASED + TARGETED:
-  // Remove only manifest refs from *.js.nft.json if the referenced file does not exist in repo root.
+  // TARGETED:
+  // - Remove ONLY manifest refs from *.js.nft.json if the referenced file does not exist
+  // - Also remove legacy "bad" manifest refs that include ".next/server/" prefix (these cause double-prefix on Vercel).
   const all = walkFiles(serverAppDir);
   const nftFiles = all.filter((p) => p.endsWith(".js.nft.json"));
 
@@ -423,15 +444,19 @@ function pruneNftTracesMissingManifestRefs(serverAppDir) {
   let patched = 0;
   let totalRemoved = 0;
 
-  const isManifestRef = (rel) =>
+  const isManifestRefLocal = (rel) =>
     typeof rel === "string" &&
+    rel.replace(/\\/g, "/").includes("client-reference-manifest") &&
+    rel.endsWith(".js");
+
+  const isLegacyBadRefLocal = (rel) =>
+    typeof rel === "string" &&
+    rel.replace(/\\/g, "/").includes(".next/server/") &&
     rel.replace(/\\/g, "/").includes("client-reference-manifest") &&
     rel.endsWith(".js");
 
   for (const nft of nftFiles) {
     scanned++;
-
-    if (!exists(nft)) continue;
 
     let json;
     try {
@@ -447,12 +472,19 @@ function pruneNftTracesMissingManifestRefs(serverAppDir) {
 
     const kept = [];
     for (const rel of json.files) {
-      if (!isManifestRef(rel)) {
+      if (!isManifestRefLocal(rel)) {
         kept.push(rel);
         continue;
       }
 
-      const abs = path.join(process.cwd(), rel);
+      // Always prune legacy-bad refs (they are known to break Vercel packaging)
+      if (isLegacyBadRefLocal(rel)) {
+        removed++;
+        continue;
+      }
+
+      // Our v2.4.x entries are relative to nft dir, so resolve from nft dir
+      const abs = path.resolve(path.dirname(nft), rel);
       if (exists(abs)) kept.push(rel);
       else removed++;
     }
@@ -489,27 +521,12 @@ function runForRoot(nextRoot) {
     return;
   }
 
-  // 1) Route group copy fallback for ROOT page manifest (v2.3.5 adds fallback discovery)
   const basePageManifest = path.join(serverApp, "page_client-reference-manifest.js");
   const baseLayoutManifest = path.join(serverApp, "layout_client-reference-manifest.js");
-
-  const fallbackPageManifest = exists(basePageManifest) ? null : findAnyManifest(serverApp, "page_client-reference-manifest.js");
-  const fallbackLayoutManifest = exists(baseLayoutManifest) ? null : findAnyManifest(serverApp, "layout_client-reference-manifest.js");
-
-  const sourcePageManifest = exists(basePageManifest) ? basePageManifest : fallbackPageManifest;
-  const sourceLayoutManifest = exists(baseLayoutManifest) ? baseLayoutManifest : fallbackLayoutManifest;
 
   log("base page manifest:", exists(basePageManifest) ? "FOUND" : "MISSING");
   log("base layout manifest:", exists(baseLayoutManifest) ? "FOUND" : "MISSING");
 
-  if (!exists(basePageManifest) && fallbackPageManifest) {
-    log("FALLBACK page manifest:", relFrom(nextRoot, fallbackPageManifest));
-  }
-  if (!exists(baseLayoutManifest) && fallbackLayoutManifest) {
-    log("FALLBACK layout manifest:", relFrom(nextRoot, fallbackLayoutManifest));
-  }
-
-  // 1.1) Ensure both not-found variants exist (best-effort)
   ensureNotFoundVariants(serverApp, nextRoot);
 
   const groups = findRouteGroups(serverApp);
@@ -520,10 +537,10 @@ function runForRoot(nextRoot) {
 
   for (const g of groups) {
     const destPage = path.join(serverApp, g, "page_client-reference-manifest.js");
-    if (sourcePageManifest && exists(sourcePageManifest) && !exists(destPage)) {
-      const r = tryCopy(sourcePageManifest, destPage);
+    if (exists(basePageManifest) && !exists(destPage)) {
+      const r = tryCopy(basePageManifest, destPage);
       if (r.ok) {
-        log("COPIED:", relFrom(nextRoot, sourcePageManifest), "->", relFrom(nextRoot, destPage));
+        log("COPIED:", relFrom(nextRoot, basePageManifest), "->", relFrom(nextRoot, destPage));
         copiedCount++;
       } else {
         log("COPY FAILED:", g, r.err);
@@ -533,35 +550,33 @@ function runForRoot(nextRoot) {
     }
 
     const destLayout = path.join(serverApp, g, "layout_client-reference-manifest.js");
-    if (sourceLayoutManifest && exists(sourceLayoutManifest) && !exists(destLayout)) {
-      const r2 = tryCopy(sourceLayoutManifest, destLayout);
+    if (exists(baseLayoutManifest) && !exists(destLayout)) {
+      const r2 = tryCopy(baseLayoutManifest, destLayout);
       if (r2.ok) {
-        log("COPIED:", relFrom(nextRoot, sourceLayoutManifest), "->", relFrom(nextRoot, destLayout));
+        log("COPIED:", relFrom(nextRoot, baseLayoutManifest), "->", relFrom(nextRoot, destLayout));
         copiedCount++;
       }
     }
   }
 
-  // 2) Include ALL client-reference manifests that ACTUALLY EXIST in required-server-files.json
+  // Include ALL client-reference manifests that ACTUALLY EXIST in required-server-files.json
   const allFiles = walkFiles(serverApp);
-  const manifestFiles = allFiles.filter((p) =>
-    /client-reference-manifest.*\.js$/.test(p.replace(/\\/g, "/"))
-  );
+  const manifestFiles = allFiles.filter((p) => /client-reference-manifest.*\.js$/.test(p.replace(/\\/g, "/")));
 
   log("client-reference manifests found:", manifestFiles.length);
 
   const patched = patchRequiredServerFiles(nextRoot, required, manifestFiles);
 
-  // 3) CRITICAL: Patch NFT traces so Vercel actually bundles these manifests (only adds existing)
+  // Patch NFT traces so Vercel actually bundles these manifests
   const nftPatched = patchAllNftTraces(serverApp);
 
-  // 3.1) PRUNE stale required-server-files entries (this stops Vercel lstat ENOENT)
+  // Prune stale required-server-files entries
   const requiredPrune = pruneRequiredServerFilesMissing(nextRoot, required);
 
-  // 3.2) PRUNE stale manifest refs inside NFT traces (targeted, proof-based)
+  // Prune stale manifest refs inside NFT traces
   const nftPrune = pruneNftTracesMissingManifestRefs(serverApp);
 
-  // 4) Fix Path A: ensure repo-root /server/** exists for any traced "server/..." file
+  // Fix Path A: ensure repo-root /server/** exists for any traced "server/..." file
   const aligned = alignRepoRootServerFilesFromRequired(nextRoot, required);
 
   log("SUMMARY:", {
