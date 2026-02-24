@@ -1,8 +1,10 @@
+// src/app/api/user/me/route.ts v1.1
+
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
 import { createServerSupabaseClient } from '@/lib/supabase';
-import { getUserBySupabaseId } from '@/lib/db';
 
 /**
  * GET /api/user/me
@@ -10,29 +12,105 @@ import { getUserBySupabaseId } from '@/lib/db';
  */
 export async function GET(req: NextRequest) {
   try {
-    const supabase = createServerSupabaseClient();
-    
     // Get the session from the authorization header
     const token = req.headers.get('Authorization')?.replace('Bearer ', '');
-    
+
     if (!token) {
-      return NextResponse.json(
-        { error: 'Unauthorized', user: null },
-        { status: 401 }
-      );
+      return NextResponse.json({ error: 'Unauthorized', user: null }, { status: 401 });
     }
+
+    // 1) Use your existing server helper strictly for token verification (proof step)
+    const supabase = createServerSupabaseClient();
 
     // Verify the token by getting the user
-    const { data: { user }, error } = await supabase.auth.getUser(token);
+    const {
+      data: { user },
+      error,
+    } = await supabase.auth.getUser(token);
 
     if (error || !user) {
+      return NextResponse.json({ error: 'Unauthorized', user: null }, { status: 401 });
+    }
+
+    // 2) IMPORTANT: Use an authed PostgREST client for all DB reads so RLS sees auth.uid()
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      console.error('[GET /api/user/me] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
       return NextResponse.json(
-        { error: 'Unauthorized', user: null },
-        { status: 401 }
+        { error: 'Server misconfigured', user: null },
+        { status: 500 }
       );
     }
 
-    const dbUser = await getUserBySupabaseId(user.id);
+    const db = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+      global: {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    });
+
+    const { data: userProfile } = await db
+      .from('user_profiles')
+      .select('id, email, full_name, current_workspace_id, country, currency')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    const currentWorkspaceId = userProfile?.current_workspace_id || null;
+
+    let workspaceRole: string = 'member';
+    if (currentWorkspaceId) {
+      const { data: workspaceMembership } = await db
+        .from('workspace_members')
+        .select('role')
+        .eq('user_id', user.id)
+        .eq('workspace_id', currentWorkspaceId)
+        .maybeSingle();
+
+      workspaceRole = workspaceMembership?.role || 'member';
+    }
+
+    let planTier: string | null = null;
+    if (currentWorkspaceId) {
+      const { data: workspace } = await db
+        .from('workspaces')
+        .select('plan_tier')
+        .eq('id', currentWorkspaceId)
+        .maybeSingle();
+
+      planTier = workspace?.plan_tier || null;
+    }
+
+    const { data: staffRecord, error: staffError } = await db
+      .from('tissca_staff')
+      .select('role, is_active')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    if (staffError && process.env.NODE_ENV === 'development') {
+      console.warn('[GET /api/user/me] tissca_staff lookup failed:', staffError.message);
+    }
+
+    const profile = userProfile
+      ? {
+          fullName: userProfile.full_name || null,
+          email: userProfile.email || user.email || null,
+          country: userProfile.country || null,
+          currency: userProfile.currency || null,
+          id: userProfile.id,
+          full_name: userProfile.full_name || null,
+          role: workspaceRole,
+          current_workspace_id: currentWorkspaceId,
+          plan_tier: planTier,
+        }
+      : null;
 
     return NextResponse.json({
       user: {
@@ -40,18 +118,14 @@ export async function GET(req: NextRequest) {
         email: user.email,
         name: user.user_metadata?.name,
       },
-      profile: dbUser?.profile ? {
-        fullName: dbUser.profile.displayName,
-        email: dbUser.email,
-        country: dbUser.profile.country,
-        currency: dbUser.profile.currency,
-      } : null,
+      profile,
+      role: workspaceRole,
+      plan_tier: planTier,
+      is_platform_staff: Boolean(staffRecord?.is_active),
+      staff_role: staffRecord?.role ?? null,
     });
   } catch (error: any) {
     console.error('Error fetching user:', error);
-    return NextResponse.json(
-      { error: 'Failed to fetch user', user: null },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to fetch user', user: null }, { status: 500 });
   }
 }
