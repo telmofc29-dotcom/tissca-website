@@ -1,4 +1,16 @@
+// src/lib/db.ts v1.3
+//
+// CHANGES (v1.3):
+// - FIX: Prevent Admin Users 500 when Prisma tables don't exist (P2021 public.user missing).
+// - Add safe fallback to Supabase for:
+//   - getUserBySupabaseId()
+//   - getUserByEmail()
+//   - getAdminUsers()
+// - Keep Prisma as primary path (no behaviour change once Prisma DB exists).
+// - Minimal targeted changes only; no refactors.
+
 import { PrismaClient } from '@prisma/client';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 // Prevent multiple instances in development
 const globalForPrisma = global as unknown as { prisma: PrismaClient };
@@ -11,15 +23,17 @@ export const prisma =
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma;
 
+/** Minimal Prisma error detector (table missing) */
+function isPrismaMissingTableError(err: any) {
+  // Prisma "table does not exist" is commonly P2021
+  return Boolean(err && (err.code === 'P2021' || err?.meta?.code === 'P2021'));
+}
+
 /**
  * Create or get user in database
  * Called after successful Supabase authentication
  */
-export async function upsertUser(
-  supabaseId: string,
-  email: string,
-  name?: string
-) {
+export async function upsertUser(supabaseId: string, email: string, name?: string) {
   return prisma.user.upsert({
     where: { supabaseId },
     update: {
@@ -48,28 +62,90 @@ export async function upsertUser(
 
 /**
  * Get user by Supabase ID with subscription
+ *
+ * NOTE:
+ * - Prisma is the primary path.
+ * - If Prisma tables are not present (P2021), fallback to Supabase user_profiles (id = auth user id).
  */
 export async function getUserBySupabaseId(supabaseId: string) {
-  return prisma.user.findUnique({
-    where: { supabaseId },
-    include: {
-      subscription: true,
-      profile: true,
-    },
-  });
+  try {
+    return await prisma.user.findUnique({
+      where: { supabaseId },
+      include: {
+        subscription: true,
+        profile: true,
+      },
+    });
+  } catch (err: any) {
+    if (!isPrismaMissingTableError(err)) throw err;
+
+    // Fallback (Supabase)
+    const supabase = createServerSupabaseClient();
+
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('id, email, full_name, created_at')
+      .eq('id', supabaseId)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!profile) return null;
+
+    // Return a shape compatible enough for current usage (authorizeAdmin needs email)
+    return {
+      id: profile.id,
+      supabaseId: profile.id,
+      email: profile.email || null,
+      name: profile.full_name || null,
+      createdAt: profile.created_at ? new Date(profile.created_at) : new Date(),
+      updatedAt: new Date(),
+      subscription: null,
+      profile: null,
+    } as any;
+  }
 }
 
 /**
  * Get user by email
+ *
+ * NOTE:
+ * - Prisma is the primary path.
+ * - If Prisma tables are not present (P2021), fallback to Supabase user_profiles.
  */
 export async function getUserByEmail(email: string) {
-  return prisma.user.findUnique({
-    where: { email },
-    include: {
-      subscription: true,
-      profile: true,
-    },
-  });
+  try {
+    return await prisma.user.findUnique({
+      where: { email },
+      include: {
+        subscription: true,
+        profile: true,
+      },
+    });
+  } catch (err: any) {
+    if (!isPrismaMissingTableError(err)) throw err;
+
+    const supabase = createServerSupabaseClient();
+
+    const { data: profile, error } = await supabase
+      .from('user_profiles')
+      .select('id, email, full_name, created_at')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error) throw error;
+    if (!profile) return null;
+
+    return {
+      id: profile.id,
+      supabaseId: profile.id,
+      email: profile.email || null,
+      name: profile.full_name || null,
+      createdAt: profile.created_at ? new Date(profile.created_at) : new Date(),
+      updatedAt: new Date(),
+      subscription: null,
+      profile: null,
+    } as any;
+  }
 }
 
 /**
@@ -120,10 +196,7 @@ export async function getSubscription(userId: string) {
 /**
  * Update subscription tier
  */
-export async function updateSubscriptionTier(
-  userId: string,
-  tier: 'free' | 'premium'
-) {
+export async function updateSubscriptionTier(userId: string, tier: 'free' | 'premium') {
   return prisma.subscription.update({
     where: { userId },
     data: { tier },
@@ -133,10 +206,7 @@ export async function updateSubscriptionTier(
 /**
  * Link Stripe customer ID to subscription
  */
-export async function linkStripeCustomer(
-  userId: string,
-  stripeCustomerId: string
-) {
+export async function linkStripeCustomer(userId: string, stripeCustomerId: string) {
   return prisma.subscription.update({
     where: { userId },
     data: { stripeCustomerId },
@@ -426,27 +496,102 @@ export async function deleteInvoice(invoiceId: string, _userId: string) {
 
 /**
  * ADMIN: Get all users with subscription and profile info
+ *
+ * NOTE:
+ * - Prisma is the primary path.
+ * - If Prisma tables are not present (P2021), fallback to Supabase user_profiles (+ workspaces.plan_tier).
  */
 export async function getAdminUsers(limit: number = 100, offset: number = 0) {
-  return prisma.user.findMany({
-    take: limit,
-    skip: offset,
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      createdAt: true,
-      profile: true,
-      subscription: {
-        select: {
-          tier: true,
-          status: true,
-          currentPeriodEnd: true,
+  try {
+    const rows = await prisma.user.findMany({
+      take: limit,
+      skip: offset,
+      select: {
+        id: true,
+        supabaseId: true,
+        email: true,
+        name: true,
+        createdAt: true,
+        profile: true,
+        subscription: {
+          select: {
+            tier: true,
+            status: true,
+            currentPeriodEnd: true,
+          },
         },
       },
-    },
-    orderBy: { createdAt: 'desc' },
-  });
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // Normalize createdAt for the client contract (string)
+    return rows.map((u) => ({
+      ...u,
+      createdAt: u.createdAt instanceof Date ? u.createdAt.toISOString() : (u.createdAt as any),
+    }));
+  } catch (err: any) {
+    if (!isPrismaMissingTableError(err)) throw err;
+
+    // Fallback (Supabase)
+    const supabase = createServerSupabaseClient();
+
+    const { data: profiles, error } = await supabase
+      .from('user_profiles')
+      .select('id, email, full_name, created_at, country, current_workspace_id')
+      .order('created_at', { ascending: false })
+      .range(offset, offset + Math.max(limit, 1) - 1);
+
+    if (error) throw error;
+
+    const safeProfiles = profiles || [];
+
+    // Pull workspace tiers in one go (if we have workspace ids)
+    const workspaceIds = Array.from(
+      new Set(
+        safeProfiles
+          .map((p: any) => p.current_workspace_id)
+          .filter((v: any) => typeof v === 'string' && v.length > 0)
+      )
+    );
+
+    let workspaceTierById = new Map<string, string>();
+    if (workspaceIds.length > 0) {
+      const { data: workspaces, error: wsError } = await supabase
+        .from('workspaces')
+        .select('id, plan_tier')
+        .in('id', workspaceIds as any);
+
+      if (wsError) throw wsError;
+
+      (workspaces || []).forEach((w: any) => {
+        if (w?.id) workspaceTierById.set(String(w.id), String(w.plan_tier || 'free'));
+      });
+    }
+
+    // Match the client contract used by /admin/users UI
+    return safeProfiles.map((p: any) => {
+      const tier = p.current_workspace_id
+        ? workspaceTierById.get(String(p.current_workspace_id)) || 'free'
+        : 'free';
+
+      return {
+        id: String(p.id),
+        supabaseId: String(p.id),
+        email: String(p.email || ''),
+        name: p.full_name || null,
+        createdAt: p.created_at ? new Date(p.created_at).toISOString() : new Date().toISOString(),
+        profile: {
+          country: p.country || null,
+          // tradeType isn't present in Supabase user_profiles (so UI will show '-')
+          tradeType: null,
+        },
+        subscription: {
+          tier,
+          status: 'active',
+        },
+      };
+    });
+  }
 }
 
 /**

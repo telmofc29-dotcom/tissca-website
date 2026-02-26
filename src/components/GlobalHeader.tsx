@@ -5,7 +5,7 @@ import { AuthNav } from './AuthNav';
 export function GlobalHeader() {
   return (
     <header
-      className="sticky top-0 z-50 bg-white border-b border-gray-200 shadow-sm"
+      className="sticky top-0 z-[70] bg-white border-b border-gray-200 shadow-sm"
       role="banner"
     >
       <div className="max-w-[1200px] mx-auto px-4 md:px-8 h-16 flex items-center justify-between">

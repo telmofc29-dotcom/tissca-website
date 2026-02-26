@@ -109,7 +109,7 @@ export default function SignUpPage() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={isLoading || !supabaseConfigured}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 rounded text-black bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
               placeholder="you@example.com"
             />
           </div>
@@ -124,7 +124,7 @@ export default function SignUpPage() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={isLoading || !supabaseConfigured}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 rounded text-black bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
               placeholder="••••••••"
             />
           </div>
@@ -139,7 +139,7 @@ export default function SignUpPage() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               disabled={isLoading || !supabaseConfigured}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
+              className="w-full px-4 py-2 border border-gray-300 rounded text-black bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary disabled:bg-gray-100"
               placeholder="••••••••"
             />
           </div>

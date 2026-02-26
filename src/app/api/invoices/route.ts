@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
 
     // Get user profile (role, business_id, client_id)
     const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
+      .from('user_profiles')
       .select('*')
       .eq('userId', user.id)
       .single();
@@ -141,7 +141,7 @@ export async function POST(req: NextRequest) {
 
     // Get user profile
     const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
+      .from('user_profiles')
       .select('*')
       .eq('userId', user.id)
       .single();

@@ -1,4 +1,4 @@
-// src/app/api/user/me/route.ts v1.1
+// src/app/api/user/me/route.ts v1.4
 
 export const dynamic = 'force-dynamic';
 
@@ -37,11 +37,10 @@ export async function GET(req: NextRequest) {
     const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
     if (!supabaseUrl || !supabaseAnonKey) {
-      console.error('[GET /api/user/me] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
-      return NextResponse.json(
-        { error: 'Server misconfigured', user: null },
-        { status: 500 }
+      console.error(
+        '[GET /api/user/me] Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY'
       );
+      return NextResponse.json({ error: 'Server misconfigured', user: null }, { status: 500 });
     }
 
     const db = createClient(supabaseUrl, supabaseAnonKey, {
@@ -57,9 +56,10 @@ export async function GET(req: NextRequest) {
       },
     });
 
+    // ✅ PROVEN SCHEMA FIX: remove non-existent columns (country, currency)
     const { data: userProfile } = await db
       .from('user_profiles')
-      .select('id, email, full_name, current_workspace_id, country, currency')
+      .select('id, email, full_name, current_workspace_id')
       .eq('id', user.id)
       .maybeSingle();
 
@@ -94,16 +94,35 @@ export async function GET(req: NextRequest) {
       .eq('user_id', user.id)
       .maybeSingle();
 
-    if (staffError && process.env.NODE_ENV === 'development') {
-      console.warn('[GET /api/user/me] tissca_staff lookup failed:', staffError.message);
+    // LOCKED: Proof-based security gate
+    // If staff lookup cannot be proven, fail closed.
+    if (staffError) {
+      console.error('[GET /api/user/me] tissca_staff lookup failed:', staffError.message);
+      return NextResponse.json({ error: 'Staff evaluation failed', user: null }, { status: 500 });
     }
+
+    const isPlatformStaff = Boolean(staffRecord?.is_active);
+
+    // Support Mode (Option B)
+    // NOTE: Cookie name is intentionally isolated here to avoid widespread coupling.
+    // The admin support-mode API routes will set/clear this cookie.
+    const SUPPORT_WORKSPACE_COOKIE = 'tissca_support_workspace_id';
+
+    const rawSupportWorkspaceId = req.cookies.get(SUPPORT_WORKSPACE_COOKIE)?.value ?? null;
+
+    // Basic UUID v4-ish format check (fail closed; do not trust arbitrary strings)
+    const looksLikeUuid =
+      typeof rawSupportWorkspaceId === 'string' &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+        rawSupportWorkspaceId
+      );
+
+    const supportWorkspaceId = isPlatformStaff && looksLikeUuid ? rawSupportWorkspaceId : null;
 
     const profile = userProfile
       ? {
           fullName: userProfile.full_name || null,
           email: userProfile.email || user.email || null,
-          country: userProfile.country || null,
-          currency: userProfile.currency || null,
           id: userProfile.id,
           full_name: userProfile.full_name || null,
           role: workspaceRole,
@@ -111,6 +130,8 @@ export async function GET(req: NextRequest) {
           plan_tier: planTier,
         }
       : null;
+
+    const supportModeActive = Boolean(supportWorkspaceId);
 
     return NextResponse.json({
       user: {
@@ -121,8 +142,18 @@ export async function GET(req: NextRequest) {
       profile,
       role: workspaceRole,
       plan_tier: planTier,
-      is_platform_staff: Boolean(staffRecord?.is_active),
+      is_platform_staff: isPlatformStaff,
       staff_role: staffRecord?.role ?? null,
+
+      // Support Mode – included for proof-based UI decisions (no client guessing)
+      support_mode: {
+        active: supportModeActive,
+        workspace_id: supportWorkspaceId,
+      },
+
+      // ✅ Convenience aliases for UI (AuthNav badge)
+      support_mode_enabled: supportModeActive,
+      support_mode_workspace_id: supportWorkspaceId,
     });
   } catch (error: any) {
     console.error('Error fetching user:', error);

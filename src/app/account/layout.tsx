@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabase, getSupabaseEnv } from '@/lib/supabase';
-import { GlobalHeader } from '@/components/GlobalHeader';
 import { GlobalFooter } from '@/components/GlobalFooter';
 import { AccountSidebar } from '@/components/AccountSidebar';
 
@@ -47,7 +46,6 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
   if (isLoading) {
     return (
       <>
-        <GlobalHeader />
         <main className="flex-grow flex items-center justify-center py-12">
           <div className="text-secondary">Loading...</div>
         </main>
@@ -58,7 +56,6 @@ export default function AccountLayout({ children }: { children: React.ReactNode 
 
   return (
     <>
-      <GlobalHeader />
       <div className="flex flex-grow">
         <AccountSidebar />
         <main className="flex-1 bg-gray-50">{children}</main>

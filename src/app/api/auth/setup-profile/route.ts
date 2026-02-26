@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
 
     // Check if profile already exists
     const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
-      .from('user_profile')
+      .from('user_profiles')
       .select('id')
       .eq('userId', userId)
       .single();
@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Create profile
-    const { error: profileError } = await supabaseAdmin.from('user_profile').insert({
+    const { error: profileError } = await supabaseAdmin.from('user_profiles').insert({
       userId,
       displayName: fullName || 'New User',
       country: 'GB',

@@ -51,7 +51,7 @@ export default function SignInPage() {
         console.error('[SignIn] No user returned from Supabase');
         setError('Sign in failed. Please try again.');
         setIsLoading(false);
-        return;
+        return; 
       }
 
       console.log(`[SignIn] Successfully signed in. User ID: ${data.user.id}`);
@@ -79,13 +79,34 @@ export default function SignInPage() {
 
       // Ensure app profile exists
       await getOrCreateAppProfile(data.user);
-      console.log(`[SignIn] Redirecting to dashboard...`);
+      console.log(`[SignIn] Resolving post-login route from /api/user/me...`);
+
+      let destination = '/dashboard';
+      try {
+        const meResponse = await fetch('/api/user/me', {
+          headers: {
+            Authorization: `Bearer ${data.session?.access_token}`,
+          },
+        });
+
+        if (meResponse.ok) {
+          const meData = await meResponse.json();
+          // Platform staff is a global product-admin concern (tissca_staff), separate from per-workspace roles in workspace_members.
+          if (meData?.is_platform_staff === true) {
+            destination = '/admin';
+          }
+        }
+      } catch (meError) {
+        console.error('[SignIn] Failed to resolve /api/user/me route check:', meError);
+      }
+
+      console.log(`[SignIn] Redirecting to ${destination}...`);
 
       // Clear any previous errors
       setError('');
       
-      // Push to dashboard (middleware will now see the session via cookies)
-      router.push('/dashboard/app');
+      // Push after proof-based route resolution
+      router.push(destination);
       
       // Refresh to ensure latest server state
       setTimeout(() => {
@@ -134,7 +155,7 @@ export default function SignInPage() {
               onChange={(e) => setEmail(e.target.value)}
               disabled={!supabaseConfigured || isLoading}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 border border-gray-300 rounded text-black bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="you@example.com"
             />
           </div>
@@ -149,7 +170,7 @@ export default function SignInPage() {
               onChange={(e) => setPassword(e.target.value)}
               disabled={!supabaseConfigured || isLoading}
               required
-              className="w-full px-4 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              className="w-full px-4 py-2 border border-gray-300 rounded text-black bg-white placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
               placeholder="••••••••"
             />
           </div>

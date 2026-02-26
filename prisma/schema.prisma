@@ -1,11 +1,22 @@
+// prisma/schema.prisma v1.1
+//
+// CHANGES (v1.1):
+// - Enable Prisma multi-schema support for Supabase (public + auth).
+// - Add datasource.schemas = ["public", "auth"] to allow introspection when public tables reference auth.users.
+// - Add @@schema("public") to all app models so they are explicitly pinned to public schema.
+// - Minimal targeted change only (no model/field refactors).
+
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["multiSchema"]
 }
 
 datasource db {
   provider  = "postgresql"
   url       = env("DATABASE_URL")
   directUrl = env("DIRECT_URL")
+
+  schemas = ["public", "auth"]
 }
 
 model User {
@@ -28,6 +39,7 @@ model User {
   @@index([supabaseId])
   @@index([email])
   @@map("user")
+  @@schema("public")
 }
 
 model UserProfile {
@@ -58,6 +70,7 @@ model UserProfile {
   @@index([client_id], map: "idx_user_profile_client_id")
   @@index([role], map: "idx_user_profile_role")
   @@map("user_profile")
+  @@schema("public")
 }
 
 model Subscription {
@@ -82,6 +95,7 @@ model Subscription {
   @@index([stripeCustomerId])
   @@index([status])
   @@map("subscription")
+  @@schema("public")
 }
 
 model Client {
@@ -100,6 +114,7 @@ model Client {
   @@unique([userId, email])
   @@index([userId])
   @@map("client")
+  @@schema("public")
 }
 
 model Quote {
@@ -125,6 +140,7 @@ model Quote {
   @@index([clientId])
   @@index([createdAt])
   @@map("quote")
+  @@schema("public")
 }
 
 model Invoice {
@@ -153,6 +169,7 @@ model Invoice {
   @@index([status])
   @@index([createdAt])
   @@map("invoice")
+  @@schema("public")
 }
 
 model PricingProfile {
@@ -169,6 +186,7 @@ model PricingProfile {
 
   @@index([userId])
   @@map("pricing_profile")
+  @@schema("public")
 }
 
 model Transaction {
@@ -190,43 +208,45 @@ model Transaction {
   @@index([type])
   @@index([userId, date])
   @@map("transaction")
+  @@schema("public")
 }
 
 model Lead {
-  id             String    @id @default(cuid())
-  userId         String
-  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  status         String    @default("New")
-  followUpDate   DateTime?
-  valueEstimate  Float?    @default(0)
-  tags           Json?
-  notes          String?
-  source         String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-  jobs           Job[]
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status        String    @default("New")
+  followUpDate  DateTime?
+  valueEstimate Float?    @default(0)
+  tags          Json?
+  notes         String?
+  source        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  jobs          Job[]
 
   @@index([userId])
   @@index([status])
   @@index([followUpDate])
   @@index([createdAt])
   @@map("lead")
+  @@schema("public")
 }
 
 model Job {
-  id                String    @id @default(cuid())
-  userId            String
-  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  linkedLeadId      String?
-  lead              Lead?     @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
-  status            String    @default("Scheduled")
-  scheduledDate     DateTime?
-  dueDate           DateTime?
-  paymentDueDate    DateTime?
-  value             Float?    @default(0)
-  notes             String?
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  linkedLeadId   String?
+  lead           Lead?     @relation(fields: [linkedLeadId], references: [id], onDelete: SetNull)
+  status         String    @default("Scheduled")
+  scheduledDate  DateTime?
+  dueDate        DateTime?
+  paymentDueDate DateTime?
+  value          Float?    @default(0)
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@index([userId])
   @@index([status])
@@ -234,4 +254,5 @@ model Job {
   @@index([scheduledDate])
   @@index([createdAt])
   @@map("job")
+  @@schema("public")
 }

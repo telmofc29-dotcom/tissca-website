@@ -46,7 +46,7 @@ export async function GET(
 
     // Verify access: client or staff
     const { data: profile } = await supabase
-      .from('user_profile')
+      .from('user_profiles')
       .select('*')
       .eq('userId', user.id)
       .single();

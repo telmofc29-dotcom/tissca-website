@@ -1,13 +1,14 @@
-'use client';
-
 import AdminShell from '@/components/AdminShell';
 import { AuthProvider } from '@/context/auth-context';
+import { requirePlatformStaff } from '@/lib/access-control';
 
-export default function AdminLayout({
+export default async function AdminLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  await requirePlatformStaff('/access-denied');
+
   return (
     <AuthProvider>
       <AdminShell>

@@ -35,7 +35,7 @@ export async function POST(
 
     // Get user profile (role, business_id)
     const { data: profile, error: profileError } = await supabase
-      .from('user_profile')
+      .from('user_profiles')
       .select('*')
       .eq('userId', user.id)
       .single();

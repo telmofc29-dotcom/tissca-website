@@ -44,7 +44,7 @@ export function PasswordInput({
         autoComplete={autoComplete}
         required={required}
         disabled={disabled}
-        className={`${className} pr-10`}
+        className={`text-black bg-white placeholder:text-gray-400 ${className} pr-10`}
       />
       <button
         type="button"

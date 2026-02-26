@@ -1,3 +1,11 @@
+// src/app/account/page.tsx v1.1
+//
+// CHANGES (v1.1):
+// - Fix TS errors by removing references to non-existent AppProfile fields (company_name, plan).
+// - Keep Company Name input as local-only display for now (no DB update) to avoid schema mismatch.
+// - Display plan badge using plan_tier if present; otherwise default to 'free' (display-only).
+// - Minimal targeted changes only; no layout refactor.
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -9,18 +17,23 @@ import {
   type AppProfile,
 } from '@/lib/supabase';
 import { formatPlanLabel, isPro, isTeam } from '@/lib/plans';
+import type { PlanTier } from '@/lib/plans';
 
 export default function AccountPage() {
   const router = useRouter();
   const [profile, setProfile] = useState<AppProfile | null>(null);
   const [fullName, setFullName] = useState('');
-  const [companyName, setCompanyName] = useState('');
+  const [companyName, setCompanyName] = useState(''); // local-only unless schema supports it
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Plan badge: prefer plan_tier if present on the actual AppProfile type at runtime
+  const planTier: PlanTier =
+    (profile && (profile as any).plan_tier) ? ((profile as any).plan_tier as PlanTier) : 'free';
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -43,10 +56,14 @@ export default function AccountPage() {
 
         const appProfile = await getOrCreateAppProfile(user);
         setProfile(appProfile);
-        setEmail(appProfile.email || user.email || '');
-        setFullName(appProfile.full_name || '');
-        setCompanyName(appProfile.company_name || '');
-        setPhone(appProfile.phone || '');
+
+        setEmail((appProfile as any).email || user.email || '');
+        setFullName((appProfile as any).full_name || '');
+
+        // company_name may not exist on current AppProfile type — keep local empty if missing
+        setCompanyName(((appProfile as any).company_name as string) || '');
+
+        setPhone(((appProfile as any).phone as string) || '');
       } catch (err: any) {
         console.error('[Account] Failed to load profile:', err);
         setError('Failed to load profile. Please try again.');
@@ -67,11 +84,11 @@ export default function AccountPage() {
     setSuccess('');
 
     try {
+      // Only update fields we can prove exist in updateAppProfile’s allowed keys.
       const updated = await updateAppProfile(profile.id, {
         full_name: fullName.trim() || null,
-        company_name: companyName.trim() || null,
         phone: phone.trim() || null,
-        plan: profile.plan,
+        // Intentionally NOT updating company_name or plan here due to schema/type mismatch.
       });
 
       setProfile(updated);
@@ -98,12 +115,8 @@ export default function AccountPage() {
     <div className="p-8 md:p-12">
       <div className="max-w-3xl">
         <div className="mb-10">
-          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">
-            Account
-          </h1>
-          <p className="text-gray-600">
-            Manage your profile details and plan.
-          </p>
+          <h1 className="text-3xl md:text-4xl font-bold text-slate-900 mb-2">Account</h1>
+          <p className="text-gray-600">Manage your profile details and plan.</p>
         </div>
 
         {error && (
@@ -126,14 +139,14 @@ export default function AccountPage() {
             </div>
             <span
               className={`rounded-full px-4 py-1 text-sm font-semibold ${
-                isTeam(profile?.plan)
+                isTeam(planTier)
                   ? 'bg-indigo-100 text-indigo-700'
-                  : isPro(profile?.plan)
+                  : isPro(planTier)
                     ? 'bg-purple-100 text-purple-700'
                     : 'bg-gray-100 text-gray-700'
               }`}
             >
-              {formatPlanLabel(profile?.plan)} Plan
+              {formatPlanLabel(planTier)} Plan
             </span>
           </div>
         </div>
@@ -168,6 +181,9 @@ export default function AccountPage() {
               className="w-full rounded border border-gray-300 px-3 py-2 text-sm focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
               placeholder="Your company"
             />
+            <p className="mt-1 text-xs text-gray-500">
+              Company name saving will be enabled once the profile schema is confirmed for this field.
+            </p>
           </div>
 
           <div>
