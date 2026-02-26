@@ -1,13 +1,10 @@
-// src/app/(admin)/admin/users/page.tsx v1.6
+// src/app/(admin)/admin/users/page.tsx v1.7
 //
-// CHANGES (v1.6):
-// - Add enterprise "Edit" control layer inside the View modal (non-destructive):
-//   - PATCH /api/admin/users/[id] (NEW endpoint) to update:
-//     - user_profiles: full_name, email (profileEmail), current_workspace_id
-//     - tissca_staff: role, is_active
-// - Keep existing staff Deactivate/Remove actions (PATCH/DELETE on /api/admin/users?userId=...) unchanged.
-// - Protected account (support@tissca.com) cannot be edited (guarded in UI + server).
-// - Minimal targeted UI additions only (no refactor of table/filter/export).
+// CHANGES (v1.7):
+// - UI FIX: Wide enterprise table now supports horizontal scrolling so last columns are always visible.
+//   - Wrap table in an overflow-x-auto container
+//   - Give table a min-width to prevent column clipping on smaller screens
+// - Keep ALL v1.6 enterprise edit layer and all existing features unchanged.
 
 'use client';
 
@@ -476,154 +473,155 @@ export default function AdminUsersPage() {
           <p className="text-gray-700">Loading users...</p>
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50 border-b border-gray-200">
-                <tr>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Email</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Name</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Workspace</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Plan</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Confirmed</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Last sign-in</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Staff</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Joined</th>
-                  <th className="px-6 py-3 text-left font-semibold text-slate-900">Actions</th>
-                </tr>
-              </thead>
+            {/* v1.7: Horizontal scroll wrapper for wide tables */}
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[1200px] text-sm">
+                <thead className="bg-gray-50 border-b border-gray-200">
+                  <tr>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Email</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Name</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Workspace</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Plan</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Confirmed</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Last sign-in</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Staff</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Joined</th>
+                    <th className="px-6 py-3 text-left font-semibold text-slate-900">Actions</th>
+                  </tr>
+                </thead>
 
-              <tbody>
-                {paginatedUsers.map((u) => {
-                  const protectedAccount = isProtectedAccount(u.email);
-                  const staffActive = Boolean(u.staffActive);
-                  const confirmed = Boolean(u.emailConfirmedAt);
-                  const supabaseUserId = u.id || u.supabaseId || '';
+                <tbody>
+                  {paginatedUsers.map((u) => {
+                    const protectedAccount = isProtectedAccount(u.email);
+                    const staffActive = Boolean(u.staffActive);
+                    const confirmed = Boolean(u.emailConfirmedAt);
+                    const supabaseUserId = u.id || u.supabaseId || '';
 
-                  return (
-                    <tr key={supabaseUserId} className="border-b hover:bg-gray-50">
-                      <td className="px-6 py-4 font-semibold text-slate-900">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span>{u.email}</span>
+                    return (
+                      <tr key={supabaseUserId} className="border-b hover:bg-gray-50">
+                        <td className="px-6 py-4 font-semibold text-slate-900">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span>{u.email}</span>
 
-                          {protectedAccount && (
-                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-800 border border-amber-200">
-                              Protected
-                            </span>
-                          )}
+                            {protectedAccount && (
+                              <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded bg-amber-100 text-amber-800 border border-amber-200">
+                                Protected
+                              </span>
+                            )}
 
-                          {staffActive && (
-                            <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded bg-slate-900 text-white border border-slate-900">
-                              Staff
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-1 text-[11px] text-gray-500 font-mono">
-                          {supabaseUserId ? `UID: ${supabaseUserId}` : 'UID: —'}
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-4 text-gray-700">
-                        <div className="leading-tight">
-                          <div>{(u.name || u.profile?.full_name || '—') as string}</div>
-                          <div className="text-xs text-gray-500">
-                            {(u.profile?.email || '').trim()
-                              ? `Profile: ${u.profile?.email}`
-                              : 'Profile: —'}
+                            {staffActive && (
+                              <span className="inline-flex items-center px-2 py-0.5 text-xs font-semibold rounded bg-slate-900 text-white border border-slate-900">
+                                Staff
+                              </span>
+                            )}
                           </div>
-                        </div>
-                      </td>
 
-                      <td className="px-6 py-4 text-gray-700">
-                        <div className="font-mono text-xs">{u.currentWorkspaceId ? u.currentWorkspaceId : '—'}</div>
-                      </td>
+                          <div className="mt-1 text-[11px] text-gray-500 font-mono">
+                            {supabaseUserId ? `UID: ${supabaseUserId}` : 'UID: —'}
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${planBadgeClasses(
-                            u.planTier
-                          )}`}
-                        >
-                          {formatPlanLabel(u.planTier)}
-                        </span>
-                      </td>
+                        <td className="px-6 py-4 text-gray-700">
+                          <div className="leading-tight">
+                            <div>{(u.name || u.profile?.full_name || '—') as string}</div>
+                            <div className="text-xs text-gray-500">
+                              {(u.profile?.email || '').trim() ? `Profile: ${u.profile?.email}` : 'Profile: —'}
+                            </div>
+                          </div>
+                        </td>
 
-                      <td className="px-6 py-4">
-                        <span
-                          className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${yesNoBadge(
-                            confirmed
-                          )}`}
-                        >
-                          {confirmed ? 'Yes' : 'No'}
-                        </span>
-                      </td>
+                        <td className="px-6 py-4 text-gray-700">
+                          <div className="font-mono text-xs">{u.currentWorkspaceId ? u.currentWorkspaceId : '—'}</div>
+                        </td>
 
-                      <td className="px-6 py-4 text-gray-700">{fmtDate(u.lastSignInAt, 'datetime')}</td>
-
-                      <td className="px-6 py-4">
-                        <div className="flex flex-col gap-1">
+                        <td className="px-6 py-4">
                           <span
-                            className={`inline-flex items-center w-fit px-2 py-1 text-xs font-semibold rounded border ${
-                              staffActive
-                                ? 'bg-green-50 text-green-700 border-green-200'
-                                : 'bg-gray-50 text-gray-700 border-gray-200'
-                            }`}
+                            className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${planBadgeClasses(
+                              u.planTier
+                            )}`}
                           >
-                            {staffActive ? 'Active' : 'No'}
+                            {formatPlanLabel(u.planTier)}
                           </span>
-                          <span className="text-xs text-gray-500">
-                            Role: <span className="font-mono">{u.staffRole || '—'}</span>
+                        </td>
+
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${yesNoBadge(
+                              confirmed
+                            )}`}
+                          >
+                            {confirmed ? 'Yes' : 'No'}
                           </span>
-                        </div>
-                      </td>
+                        </td>
 
-                      <td className="px-6 py-4 text-gray-700">{fmtDate(u.createdAt, 'date')}</td>
+                        <td className="px-6 py-4 text-gray-700">{fmtDate(u.lastSignInAt, 'datetime')}</td>
 
-                      <td className="px-6 py-4">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setSelectedUser(u);
-                              setShowRawProfile(false);
-                            }}
-                            className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
-                          >
-                            View
-                          </button>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`inline-flex items-center w-fit px-2 py-1 text-xs font-semibold rounded border ${
+                                staffActive
+                                  ? 'bg-green-50 text-green-700 border-green-200'
+                                  : 'bg-gray-50 text-gray-700 border-gray-200'
+                              }`}
+                            >
+                              {staffActive ? 'Active' : 'No'}
+                            </span>
+                            <span className="text-xs text-gray-500">
+                              Role: <span className="font-mono">{u.staffRole || '—'}</span>
+                            </span>
+                          </div>
+                        </td>
 
-                          <button
-                            type="button"
-                            disabled={protectedAccount || !staffActive}
-                            onClick={() => deactivatePlatformStaff(supabaseUserId)}
-                            className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                            title={!staffActive ? 'User is not active staff' : undefined}
-                          >
-                            Deactivate
-                          </button>
+                        <td className="px-6 py-4 text-gray-700">{fmtDate(u.createdAt, 'date')}</td>
 
-                          <button
-                            type="button"
-                            disabled={protectedAccount}
-                            onClick={() => removePlatformStaff(supabaseUserId)}
-                            className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                          >
-                            Remove
-                          </button>
-                        </div>
+                        <td className="px-6 py-4">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSelectedUser(u);
+                                setShowRawProfile(false);
+                              }}
+                              className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
+                            >
+                              View
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={protectedAccount || !staffActive}
+                              onClick={() => deactivatePlatformStaff(supabaseUserId)}
+                              className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={!staffActive ? 'User is not active staff' : undefined}
+                            >
+                              Deactivate
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={protectedAccount}
+                              onClick={() => removePlatformStaff(supabaseUserId)}
+                              className="text-xs px-3 py-1.5 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+
+                  {paginatedUsers.length === 0 && (
+                    <tr>
+                      <td className="px-6 py-10 text-center text-gray-600" colSpan={9}>
+                        No matching users.
                       </td>
                     </tr>
-                  );
-                })}
-
-                {paginatedUsers.length === 0 && (
-                  <tr>
-                    <td className="px-6 py-10 text-center text-gray-600" colSpan={9}>
-                      No matching users.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
             {/* Pagination */}
             <div className="p-4 flex justify-between items-center text-gray-700">
