@@ -204,39 +204,10 @@ async function readJsonOrText(res: Response): Promise<{ json: any | null; text: 
   }
 }
 
-/**
- * IMPORTANT (client runtime safety):
- * - Do not dynamically access process.env in a client component.
- * - Use build-time NEXT_PUBLIC_* inlined constants only.
- */
-const ENV_FUNCTIONS_URL = (process.env.NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL || '').trim();
-const ENV_ANON_KEY = (process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '').trim();
-const ENV_ADMIN_PROMO_FN = (process.env.NEXT_PUBLIC_ADMIN_PROMO_FUNCTION || 'admin-create-promo-code').trim();
-
-function normaliseFunctionsBase(base: string): string {
-  const b = String(base ?? '').trim().replace(/\/+$/, '');
-  if (!b) return b;
-  if (b.endsWith('/functions/v1')) return b;
-  if (b.includes('/functions/v1/')) return b.replace(/\/+$/, '');
-  return `${b}/functions/v1`;
-}
-
-function buildFunctionsUrl(base: string, fnName: string): string {
-  return `${base.replace(/\/+$/, '')}/${fnName.replace(/^\/+/, '')}`;
-}
-
-function getFunctionsConfigOrError(): { base: string; anonKey: string; promoUrl: string } | { error: string } {
-  const baseRaw = ENV_FUNCTIONS_URL;
-  const anonKey = ENV_ANON_KEY;
-
-  if (!baseRaw) return { error: 'Missing NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL (Edge Functions base URL).' };
-  if (!anonKey) return { error: 'Missing NEXT_PUBLIC_SUPABASE_ANON_KEY (required to call Edge Functions).' };
-
-  const base = normaliseFunctionsBase(baseRaw);
-  const promoUrl = buildFunctionsUrl(base, ENV_ADMIN_PROMO_FN || 'admin-create-promo-code');
-
-  return { base, anonKey, promoUrl };
-}
+// Voucher creation is proxied through the server-side route
+// /api/admin/stripe/promo/create which derives the Edge Function URL
+// from NEXT_PUBLIC_SUPABASE_URL (already required for the app to run).
+// No NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL is needed in the browser.
 
 type ModalKind = 'cancel_now' | 'cancel_eop' | 'pause' | 'resume' | 'credit' | 'refund' | null;
 
@@ -611,11 +582,6 @@ export default function AdminVouchersPage() {
 
     setPromoMsg('');
     setSendMsg('');
-    const cfg = getFunctionsConfigOrError();
-    if ('error' in cfg) {
-      setPromoMsg(cfg.error);
-      return;
-    }
 
     try {
       setPromoBusy(true);
@@ -662,18 +628,18 @@ export default function AdminVouchersPage() {
         duration_in_months: durationInMonths,
         max_redemptions: maxRedemptions,
         redeem_by_iso: redeemByIso,
-
-        // NEW (safe additive fields):
         kind,
         issued_to_email: kind === 'targeted' ? email : null,
       };
 
-      const res = await fetch(cfg.promoUrl, {
+      // Voucher creation is proxied through the server-side route which
+      // derives the Supabase Edge Function URL from NEXT_PUBLIC_SUPABASE_URL.
+      // No NEXT_PUBLIC_SUPABASE_FUNCTIONS_URL required in the browser.
+      const res = await fetch('/api/admin/stripe/promo/create', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
-          apikey: cfg.anonKey,
         },
         body: JSON.stringify(body),
       });
@@ -1595,7 +1561,7 @@ export default function AdminVouchersPage() {
             {promoMsg && <div className="mt-4 p-3 rounded border border-amber-200 bg-amber-50 text-amber-900 text-sm">{promoMsg}</div>}
 
             <div className="mt-2 text-[11px] text-gray-500">
-              Edge Function: <span className="font-mono">{ENV_ADMIN_PROMO_FN || 'admin-create-promo-code'}</span>
+              Route: <span className="font-mono">/api/admin/stripe/promo/create</span> → Edge Function: <span className="font-mono">admin-create-promo-code</span>
             </div>
           </div>
 
