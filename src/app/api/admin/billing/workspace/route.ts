@@ -1,4 +1,4 @@
-// src/app/api/admin/billing/workspace/route.ts v1.3
+// src/app/api/admin/billing/workspace/route.ts v1.4
 //
 // PURPOSE:
 // - Admin (staff-only) proof-based billing snapshot for a workspace.
@@ -14,18 +14,22 @@
 // - Fail closed (no guessing)
 //
 // RETURNS:
-// - { workspace: { ... }, promo_issues: [...], promo_issues_error?: string }
+// - { workspace: { ... }, billing_state: string, promo_issues: [...], promo_issues_error?: string }
 //
-// CHANGES (v1.3):
-// - FIX/HARDEN: Use a server-side Service Role Supabase client for DB reads (staff-only endpoint).
-//   This avoids RLS/cookie-context mismatches that can cause 500s even when the token is valid.
-// - HARDEN: Fail closed with a clear error if service role env vars are missing.
+// CHANGES (v1.4):
+// - FIX (RC5): Replace inline createServiceSupabaseClient() with createServerSupabaseClient()
+//   from @/lib/supabase — eliminates stale env-var fallback alias risk on key rotation.
+// - FIX: Remove `updated_at` from workspaces select. The column is not confirmed to exist on
+//   the workspaces table and no other working route requests it. PostgREST returns an error
+//   (not null) when a selected column is absent — this was the cause of WORKSPACE_LOOKUP_FAILED.
+// - IMPROVE: Surface PostgREST error details (message + hint + code) in WORKSPACE_LOOKUP_FAILED.
+// - IMPROVE: Post-fetch billing_state flag: NO_STRIPE_CUSTOMER | NO_STRIPE_SUBSCRIPTION | CONFIGURED.
 // - KEEP: Validate workspace_id is a UUID (fail closed early).
 // - KEEP: Request-id passthrough on responses when present (helps debug in UI).
 // - KEEP: Best-effort promo_issues load (returns workspace even if promos fail).
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
@@ -55,43 +59,6 @@ function isUuid(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
-function getServiceEnv() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_ROLE_KEY ||
-    process.env.SUPABASE_SERVICE_KEY ||
-    process.env.SUPABASE_SERVICE_ROLE ||
-    '';
-
-  return {
-    url: String(url).trim(),
-    serviceKey: String(serviceKey).trim(),
-  };
-}
-
-function createServiceSupabaseClient() {
-  const { url, serviceKey } = getServiceEnv();
-
-  if (!url || !serviceKey) {
-    return { client: null as any, missing: { url: !url, serviceKey: !serviceKey } };
-  }
-
-  const client = createClient(url, serviceKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
-      detectSessionInUrl: false,
-    },
-    global: {
-      headers: {
-        // Helps correlate in Supabase logs if you’re using request IDs
-        'x-client-info': 'tissca-admin-billing-workspace',
-      },
-    },
-  });
-
-  return { client, missing: null as any };
-}
 
 export async function GET(req: NextRequest) {
   const reqId = getRequestId(req);
@@ -105,21 +72,9 @@ export async function GET(req: NextRequest) {
     if (!workspaceId) return json(400, { error: 'MISSING_WORKSPACE_ID' }, reqId);
     if (!isUuid(workspaceId)) return json(400, { error: 'INVALID_WORKSPACE_ID' }, reqId);
 
-    // Staff-only endpoint: use service role for DB reads to avoid RLS/cookie context issues.
-    const svc = createServiceSupabaseClient();
-    if (!svc.client) {
-      return json(
-        500,
-        {
-          error: 'SERVER_MISCONFIGURED',
-          details: 'Missing Supabase service role environment variables.',
-          missing: svc.missing,
-        },
-        reqId
-      );
-    }
-
-    const supabase = svc.client;
+    // Staff-only endpoint: use shared service role client (bypasses RLS, no cookie context).
+    // createServerSupabaseClient() throws if env vars are missing — caught by outer try/catch.
+    const supabase = createServerSupabaseClient();
 
     // 1) Validate user from token (proof-based)
     const { data: userData, error: userErr } = await supabase.auth.getUser(token);
@@ -135,17 +90,38 @@ export async function GET(req: NextRequest) {
     if (staff.error) return json(500, { error: 'STAFF_LOOKUP_FAILED', details: staff.error.message }, reqId);
     if (!staff.data || !staff.data.is_active) return json(403, { error: 'NOT_STAFF' }, reqId);
 
-    // 3) Load workspace billing container
+    // 3) Load workspace billing container.
+    // NOTE: updated_at is intentionally excluded — it is not a confirmed column on the workspaces
+    // table. PostgREST returns an error (not null) for unknown columns, which was causing
+    // WORKSPACE_LOOKUP_FAILED even when the workspace exists.
     const ws = await supabase
       .from('workspaces')
-      .select('id,name,plan_tier,subscription_status,stripe_customer_id,stripe_subscription_id,current_period_end,updated_at')
+      .select('id,name,plan_tier,subscription_status,stripe_customer_id,stripe_subscription_id,current_period_end')
       .eq('id', workspaceId)
       .maybeSingle();
 
-    if (ws.error) return json(500, { error: 'WORKSPACE_LOOKUP_FAILED', details: ws.error.message }, reqId);
+    if (ws.error) {
+      return json(
+        500,
+        {
+          error: 'WORKSPACE_LOOKUP_FAILED',
+          details: (ws.error as any).message ?? String(ws.error),
+          hint: (ws.error as any).hint ?? null,
+          pg_code: (ws.error as any).code ?? null,
+        },
+        reqId
+      );
+    }
     if (!ws.data) return json(404, { error: 'WORKSPACE_NOT_FOUND' }, reqId);
 
-    // 4) Load promo audit list (best-effort; page can still function without it)
+    // 4) Post-fetch billing state: classify what is and isn't configured.
+    const billingState = !ws.data.stripe_customer_id
+      ? 'NO_STRIPE_CUSTOMER'
+      : !ws.data.stripe_subscription_id
+      ? 'NO_STRIPE_SUBSCRIPTION'
+      : 'CONFIGURED';
+
+    // 5) Load promo audit list (best-effort; page can still function without it)
     const promos = await supabase
       .from('admin_promo_issues')
       .select(
@@ -156,10 +132,10 @@ export async function GET(req: NextRequest) {
       .limit(50);
 
     if (promos.error) {
-      return json(200, { workspace: ws.data, promo_issues: [], promo_issues_error: promos.error.message }, reqId);
+      return json(200, { workspace: ws.data, billing_state: billingState, promo_issues: [], promo_issues_error: promos.error.message }, reqId);
     }
 
-    return json(200, { workspace: ws.data, promo_issues: promos.data || [] }, reqId);
+    return json(200, { workspace: ws.data, billing_state: billingState, promo_issues: promos.data || [] }, reqId);
   } catch (e: any) {
     return json(500, { error: 'INTERNAL_ERROR', details: String(e?.message ?? e) }, reqId);
   }

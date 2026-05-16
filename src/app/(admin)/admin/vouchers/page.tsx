@@ -102,8 +102,9 @@ type AdminBillingWorkspaceResponse = {
     stripe_customer_id: string | null;
     stripe_subscription_id: string | null;
     current_period_end: string | null;
-    updated_at?: string | null;
   } | null;
+  /** NO_STRIPE_CUSTOMER | NO_STRIPE_SUBSCRIPTION | CONFIGURED */
+  billing_state?: string | null;
   promo_issues?: Array<{
     id: string;
     workspace_id: string;
@@ -525,11 +526,14 @@ export default function AdminVouchersPage() {
         const requestId =
           res.headers.get('x-request-id') || res.headers.get('x-vercel-id') || res.headers.get('cf-ray') || '';
 
+        // Surface both the error code AND the underlying details (e.g. PostgREST message).
+        const errorParts = [json?.error, json?.details || json?.hint]
+          .filter(Boolean)
+          .join(' — ');
         const serverMsg =
-          json?.error ||
+          errorParts ||
           json?.code ||
           json?.message ||
-          json?.details ||
           (text ? text.slice(0, 500) : null) ||
           `Failed (HTTP ${res.status})`;
 
