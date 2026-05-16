@@ -3,10 +3,12 @@
  * Handles submission, storage, and retrieval of feedback/reviews/bug reports
  */
 
-export type FeedbackType = 'help' | 'issue' | 'suggestion' | 'review';
+export type FeedbackType = 'help' | 'issue' | 'suggestion' | 'review' | 'cancellation';
 export type FeedbackStatus = 'new' | 'in-progress' | 'done';
-export type FeedbackSection = 'calculators' | 'guides' | 'docs' | 'admin' | 'other';
+export type FeedbackSection = 'homepage' | 'pricing' | 'download' | 'signin' | 'member-app' | 'quotes-invoices' | 'leads-jobs' | 'billing' | 'settings' | 'support' | 'calculators' | 'guides' | 'docs' | 'admin' | 'other' | 'subscription';
 export type DeviceType = 'mobile' | 'desktop' | 'tablet';
+
+export type CancellationContext = 'subscription_cancel' | 'account_delete';
 
 export interface FeedbackSubmission {
   id: string;
@@ -21,6 +23,9 @@ export interface FeedbackSubmission {
   deviceType: DeviceType;
   userAgent?: string;
   rating?: number; // For reviews 1-5
+  cancellationReasons?: string[]; // For cancellation type
+  cancellationContext?: CancellationContext; // subscription_cancel or account_delete
+  isBlocked?: boolean; // For help/issue types
   internalNotes?: string;
   createdAt: string;
   updatedAt: string;
@@ -60,10 +65,20 @@ export function detectDeviceType(userAgent?: string): DeviceType {
  * Get section from URL path
  */
 export function getSectionFromUrl(url: string): FeedbackSection {
+  if (url.includes('/pricing')) return 'pricing';
+  if (url.includes('/download')) return 'download';
+  if (url.includes('/sign-in') || url.includes('/login') || url.includes('/register') || url.includes('/sign-up')) return 'signin';
+  if (url.includes('/quotes') || url.includes('/invoices')) return 'quotes-invoices';
+  if (url.includes('/leads') || url.includes('/jobs')) return 'leads-jobs';
+  if (url.includes('/subscription') || url.includes('/billing')) return 'billing';
+  if (url.includes('/settings')) return 'settings';
+  if (url.includes('/support') || url.includes('/faq') || url.includes('/contact')) return 'support';
   if (url.includes('/calculators')) return 'calculators';
   if (url.includes('/guides')) return 'guides';
   if (url.includes('/docs')) return 'docs';
   if (url.includes('/admin')) return 'admin';
+  if (url.includes('/app')) return 'member-app';
+  if (url === '/' || url.includes('/homepage')) return 'homepage';
   return 'other';
 }
 
@@ -81,6 +96,9 @@ export function createFeedbackSubmission(
     userAgent?: string;
     rating?: number;
     section?: FeedbackSection;
+    cancellationReasons?: string[];
+    cancellationContext?: CancellationContext;
+    isBlocked?: boolean;
   }
 ): FeedbackSubmission {
   const now = new Date().toISOString();
@@ -98,6 +116,9 @@ export function createFeedbackSubmission(
     deviceType: options?.deviceType || detectDeviceType(options?.userAgent),
     userAgent: options?.userAgent,
     rating: options?.rating,
+    cancellationReasons: options?.cancellationReasons,
+    cancellationContext: options?.cancellationContext,
+    isBlocked: options?.isBlocked,
     createdAt: now,
     updatedAt: now,
   };
@@ -190,6 +211,7 @@ export function getFeedbackStats() {
       issue: feedbackStore.filter(f => f.type === 'issue').length,
       suggestion: feedbackStore.filter(f => f.type === 'suggestion').length,
       review: feedbackStore.filter(f => f.type === 'review').length,
+      cancellation: feedbackStore.filter(f => f.type === 'cancellation').length,
     },
     byStatus: {
       new: feedbackStore.filter(f => f.status === 'new').length,
@@ -201,12 +223,29 @@ export function getFeedbackStats() {
       guides: feedbackStore.filter(f => f.section === 'guides').length,
       docs: feedbackStore.filter(f => f.section === 'docs').length,
       admin: feedbackStore.filter(f => f.section === 'admin').length,
+      subscription: feedbackStore.filter(f => f.section === 'subscription').length,
       other: feedbackStore.filter(f => f.section === 'other').length,
     },
     avgRating: feedbackStore
       .filter(f => f.rating)
       .reduce((sum, f) => sum + (f.rating || 0), 0) / feedbackStore.filter(f => f.rating).length || 0,
+    cancellationReasonCounts: getCancellationReasonCounts(),
   };
+}
+
+/**
+ * Get cancellation reason aggregation
+ */
+export function getCancellationReasonCounts(): Record<string, number> {
+  const counts: Record<string, number> = {};
+  feedbackStore
+    .filter(f => f.type === 'cancellation' && f.cancellationReasons)
+    .forEach(f => {
+      f.cancellationReasons!.forEach(reason => {
+        counts[reason] = (counts[reason] || 0) + 1;
+      });
+    });
+  return counts;
 }
 
 /**
@@ -218,10 +257,13 @@ export function exportFeedbackToCSV(feedback: FeedbackSubmission[]): string {
     'Type',
     'Status',
     'Section',
+    'Blocked',
+    'Cancellation Context',
     'Headline',
     'Description',
     'Email',
     'Rating',
+    'Cancellation Reasons',
     'Device',
     'URL',
     'Timestamp',
@@ -233,10 +275,13 @@ export function exportFeedbackToCSV(feedback: FeedbackSubmission[]): string {
     f.type,
     f.status,
     f.section,
+    f.isBlocked === true ? 'Yes' : f.isBlocked === false ? 'No' : '',
+    f.cancellationContext || '',
     `"${f.headline.replace(/"/g, '""')}"`,
     `"${f.description.replace(/"/g, '""')}"`,
     f.userEmail || '',
     f.rating || '',
+    `"${(f.cancellationReasons || []).join('; ')}"`,
     f.deviceType,
     f.url,
     f.timestamp,
@@ -270,5 +315,8 @@ export const BOT_QUESTIONS: Record<FeedbackType, string[]> = {
     'What\'s your overall experience?',
     'What\'s working well?',
     'What could we improve?',
+  ],
+  cancellation: [
+    'Why are you cancelling?',
   ],
 };

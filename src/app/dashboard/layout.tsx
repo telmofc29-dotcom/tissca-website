@@ -19,7 +19,7 @@ export default async function DashboardLayout({
 }: {
   children: ReactNode;
 }) {
-  const user = await requireSession('/login');
+  const user = await requireSession('/sign-in');
 
   // Support Mode proof: presence of server-trusted cookie
   // NOTE: httpOnly cookie is readable server-side.

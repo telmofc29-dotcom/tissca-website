@@ -30,8 +30,15 @@ export const defaultMetadata: Metadata = {
   },
   description: brandConfig.description,
   icons: {
-    icon: '/favicon.ico',
-    apple: '/apple-touch-icon.png',
+    icon: '/icon.png',
+    apple: '/apple-icon.png',
+  },
+  manifest: '/manifest.webmanifest',
+  themeColor: brandConfig.colors.navy,
+  appleWebApp: {
+    capable: true,
+    title: brandConfig.displayName,
+    statusBarStyle: 'black-translucent',
   },
   openGraph: {
     type: 'website',

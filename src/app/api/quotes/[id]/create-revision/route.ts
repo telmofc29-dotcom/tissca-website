@@ -37,26 +37,26 @@ export async function POST(
       );
     }
 
-    // Verify user is staff
-    const { data: staffMember, error: staffError } = await supabase
-      .from('staff_members')
-      .select('business_id')
+    // Verify user is a workspace member
+    const { data: member, error: memberError } = await supabase
+      .from('workspace_members')
+      .select('workspace_id')
       .eq('user_id', user.id)
       .single();
 
-    if (staffError || !staffMember) {
+    if (memberError || !member) {
       return NextResponse.json(
-        { error: 'Forbidden: Only staff can create revisions' },
+        { error: 'Forbidden: Only workspace members can create revisions' },
         { status: 403 }
       );
     }
 
-    // Verify quote exists and belongs to staff's business
+    // Verify quote exists and belongs to member's workspace
     const { data: quote, error: quoteError } = await supabase
       .from('quotes')
       .select('*')
       .eq('id', quoteId)
-      .eq('business_id', staffMember.business_id)
+      .eq('business_id', member.workspace_id)
       .single();
 
     if (quoteError || !quote) {

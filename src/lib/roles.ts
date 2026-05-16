@@ -1,11 +1,12 @@
+// src/lib/roles.ts v1.1
 /**
- * BUILDR Role System - Single Source of Truth
- * 
- * This module defines all role-based configuration for BUILDR.
- * BUILDR is a construction/renovation SaaS for contractors, accountants, and clients.
- * 
+ * TISSCA Role System - Single Source of Truth
+ *
+ * This module defines all role-based configuration for TISSCA.
+ * TISSCA is a construction/renovation SaaS for contractors, accountants, and clients.
+ *
  * Roles:
- * - admin: System administrator (BUILDR team)
+ * - admin: System administrator (TISSCA team)
  * - staff: Contractor staff who create quotes/invoices
  * - accountant: Financial professional who reviews invoices
  * - client: End customer receiving quotes and invoices
@@ -130,4 +131,24 @@ export function canReviewInvoices(role: UserRole): boolean {
  */
 export function isAdmin(role: UserRole): boolean {
   return role === 'admin';
+}
+
+/**
+ * Support Mode (Option B)
+ * - Admin does NOT become the user.
+ * - Admin may simulate a member workspace view for troubleshooting.
+ * - This constant is the single source of truth for the cookie name used by server routes.
+ *
+ * NOTE (LOCKED):
+ * We only READ this cookie on the server (e.g. /api/user/me and server layouts).
+ * Client components should not attempt to read it directly.
+ */
+export const SUPPORT_MODE_WORKSPACE_COOKIE = 'tissca_support_workspace_id';
+
+/**
+ * Helper for server/UI wiring to check if support mode is active.
+ * (Truth still comes from server proof, not from client guessing.)
+ */
+export function isSupportModeActive(supportWorkspaceId: string | null | undefined): boolean {
+  return Boolean(supportWorkspaceId);
 }

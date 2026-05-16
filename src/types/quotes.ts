@@ -1,6 +1,6 @@
 /**
  * Quote System Types
- * Comprehensive TypeScript definitions for BUILDR's quoting engine
+ * Comprehensive TypeScript definitions for TISSCA's quoting engine
  * Supports materials, labour rates, variants, and quote management
  */
 

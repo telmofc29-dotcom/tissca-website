@@ -1,0 +1,47 @@
+// src/app/(member)/app/tasks/page.tsx v1.1
+//
+// PURPOSE:
+// - Member app tasks placeholder UI.
+//
+// CHANGES (v1.1):
+// - FIX: Convert tasks page to light SaaS styling (readable dark text).
+// - Preserve floating card feel with soft shadows.
+// - Keep layout/content the same (placeholder only).
+//
+// VERSION HISTORY:
+// - v1.0: Initial placeholder UI (dark/glass).
+// - v1.1 (2026-03-01): Light theme + improved readability.
+
+const taskGroups = [
+  { title: 'Today', count: 0 },
+  { title: 'This week', count: 0 },
+  { title: 'Overdue', count: 0 },
+];
+
+export default function AppTasksPage() {
+  return (
+    <div className="space-y-6">
+      <section className="grid gap-4 sm:grid-cols-3">
+        {taskGroups.map((group) => (
+          <article
+            key={group.title}
+            className="rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.22)]"
+          >
+            <p className="text-sm text-slate-600">{group.title}</p>
+            <p className="mt-2 text-3xl font-semibold tracking-tight text-slate-900">
+              {group.count}
+            </p>
+          </article>
+        ))}
+      </section>
+
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.22)]">
+        <h2 className="text-lg font-semibold text-slate-900">Task board</h2>
+
+        <div className="mt-4 rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-sm text-slate-600">
+          No tasks yet. Create reminders for follow-ups, due invoices, and site visits.
+        </div>
+      </section>
+    </div>
+  );
+}

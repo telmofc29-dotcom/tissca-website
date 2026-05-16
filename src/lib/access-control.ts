@@ -1,3 +1,5 @@
+// src/lib/access-control.ts v1.1
+
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { redirect } from 'next/navigation';
@@ -161,7 +163,7 @@ export function createErrorResponse(
   return NextResponse.json({ error: message }, { status });
 }
 
-export async function requireSession(redirectTo = '/login') {
+export async function requireSession(redirectTo = '/sign-in') {
   const supabase = createServerSupabaseSessionClient();
   const { data, error } = await supabase.auth.getUser();
 
@@ -217,31 +219,17 @@ export async function getPlatformStaffStatus(userId: string): Promise<{
 }> {
   const supabase = createServerSupabaseSessionClient();
 
-  const { data: profile } = await supabase
-    .from('user_profiles')
-    .select('id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (!profile) {
-    return {
-      is_platform_staff: false,
-      staff_role: null,
-    };
-  }
-
   const { data: staffRecord, error: staffError } = await supabase
     .from('tissca_staff')
     .select('user_id, role, is_active')
     .eq('user_id', userId)
     .maybeSingle();
 
+  // LOCKED: Proof-based security gate (fail closed)
+  // If staff lookup cannot be proven, do NOT silently fall back to "not staff".
   if (staffError) {
-    console.warn('tissca_staff lookup failed:', staffError.message);
-    return {
-      is_platform_staff: false,
-      staff_role: null,
-    };
+    console.error('[getPlatformStaffStatus] tissca_staff lookup failed:', staffError.message);
+    throw new Error('Staff evaluation failed');
   }
 
   return {
@@ -250,33 +238,50 @@ export async function getPlatformStaffStatus(userId: string): Promise<{
   };
 }
 
-export async function requirePlatformStaff(redirectTo = '/access-denied') {
-  const user = await requireSession();
-  const staffStatus = await getPlatformStaffStatus(user.id);
+export async function requirePlatformStaff(
+  loginRedirectTo = '/sign-in',
+  deniedRedirectTo = '/access-denied'
+) {
+  const user = await requireSession(loginRedirectTo);
 
-  if (!staffStatus.is_platform_staff) {
-    redirect(redirectTo);
+  try {
+    const staffStatus = await getPlatformStaffStatus(user.id);
+
+    if (!staffStatus.is_platform_staff) {
+      redirect(deniedRedirectTo);
+    }
+
+    return user;
+  } catch (e: any) {
+    console.error('[requirePlatformStaff] staff evaluation failed:', e?.message || e);
+    redirect(deniedRedirectTo);
   }
-
-  return user;
 }
 
 export async function requirePlatformStaffRole(
   allowedRoles: string[],
-  redirectTo = '/access-denied'
+  loginRedirectTo = '/sign-in',
+  deniedRedirectTo = '/access-denied'
 ) {
-  const user = await requireSession();
-  const staffStatus = await getPlatformStaffStatus(user.id);
+  const user = await requireSession(loginRedirectTo);
+
+  let staffStatus: { is_platform_staff: boolean; staff_role: string | null };
+  try {
+    staffStatus = await getPlatformStaffStatus(user.id);
+  } catch (e: any) {
+    console.error('[requirePlatformStaffRole] staff evaluation failed:', e?.message || e);
+    redirect(deniedRedirectTo);
+  }
 
   if (!staffStatus.is_platform_staff) {
-    redirect(redirectTo);
+    redirect(deniedRedirectTo);
   }
 
   const role = (staffStatus.staff_role || '').toLowerCase();
   const normalizedAllowed = allowedRoles.map((value) => value.toLowerCase());
 
   if (!normalizedAllowed.includes(role)) {
-    redirect(redirectTo);
+    redirect(deniedRedirectTo);
   }
 
   return { user, staff_role: staffStatus.staff_role };

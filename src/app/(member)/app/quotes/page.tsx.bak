@@ -1,0 +1,57 @@
+// src/app/(member)/app/quotes/page.tsx v1.1
+//
+// PURPOSE:
+// - Member app quotes placeholder UI.
+//
+// CHANGES (v1.1):
+// - FIX: Convert quotes page to light SaaS styling (readable dark text).
+// - Preserve the “floating card” feel with soft shadows.
+// - Keep layout + data the same (placeholder only).
+//
+// VERSION HISTORY:
+// - v1.0: Initial placeholder UI (dark/glass).
+// - v1.1 (2026-03-01): Light theme + improved readability.
+
+const quoteDrafts = [
+  { title: 'Kitchen refit', client: 'Client placeholder', total: '£0', status: 'Draft' },
+  { title: 'Bathroom refresh', client: 'Client placeholder', total: '£0', status: 'Draft' },
+];
+
+export default function AppQuotesPage() {
+  return (
+    <div className="space-y-6">
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.24)]">
+        <div className="flex items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold text-slate-900">Quote board</h2>
+
+          <button
+            type="button"
+            className="rounded-full border border-amber-200 bg-amber-50 px-4 py-2 text-sm font-semibold text-amber-700 hover:bg-amber-100/50"
+          >
+            New quote
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          {quoteDrafts.map((quote) => (
+            <article
+              key={quote.title}
+              className="rounded-2xl border border-gray-200 bg-white px-4 py-3 shadow-[0_16px_44px_-34px_rgba(0,0,0,0.22)]"
+            >
+              <p className="font-semibold text-slate-900">{quote.title}</p>
+              <p className="mt-1 text-sm text-slate-600">{quote.client}</p>
+
+              <div className="mt-3 flex items-center justify-between text-sm">
+                <span className="font-semibold text-slate-900">{quote.total}</span>
+
+                <span className="rounded-full border border-gray-200 bg-gray-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
+                  {quote.status}
+                </span>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}

@@ -38,7 +38,7 @@ export default function AccountantDashboard() {
 
         if (!user) {
           console.log('[Accountant] No user found, redirecting to sign-in');
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -49,7 +49,7 @@ export default function AccountantDashboard() {
 
         if (!profile || profile.role !== 'accountant') {
           console.log('[Accountant] User is not accountant, redirecting');
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 

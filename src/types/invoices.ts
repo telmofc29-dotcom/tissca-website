@@ -1,6 +1,6 @@
 /**
  * Invoice System Types
- * Comprehensive TypeScript definitions for BUILDR's invoicing engine
+ * Comprehensive TypeScript definitions for TISSCA's invoicing engine
  * Supports invoice management, payment tracking, and financial reporting
  */
 

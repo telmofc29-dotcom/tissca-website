@@ -7,6 +7,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { LabourRate } from '@/types/quotes';
+import { formatCurrency } from '@/lib/currency';
 
 interface LabourPickerModalProps {
   isOpen: boolean;
@@ -31,15 +32,6 @@ export function LabourPickerModal({
     const lower = searchQuery.toLowerCase();
     return labourRates.filter((l) => l.trade.toLowerCase().includes(lower));
   }, [labourRates, searchQuery]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
 
   if (!isOpen) return null;
 

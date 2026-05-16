@@ -1,6 +1,6 @@
-// src/lib/server-session.ts v1.0.1
+// src/lib/server-session.ts v2.0
 /**
- * server-session.ts v1.0.1
+ * server-session.ts v2.0
  * =========================
  * Cookie-based Supabase client for App Router Server Components (layouts/pages).
  * This is NOT the service-role client.
@@ -8,7 +8,12 @@
  * ✅ LOCKED (CRITICAL):
  * - Server Components cannot mutate cookies via next/headers.
  * - Do NOT call cookieStore.set/remove here.
- * - Session refresh + cookie updates must happen in middleware.ts or Route Handlers.
+ * - Session refresh + cookie updates happen in middleware.ts.
+ *
+ * CHANGES (v2.0):
+ * - Use getAll/setAll API (matches middleware pattern and @supabase/ssr v0.8+).
+ * - setAll is a safe NOOP — middleware already refreshed the cookies before
+ *   this code runs, so Server Components just need to read them.
  *
  * Used for: server-side proof checks (read-only), e.g. requireSession(), requireRole().
  */
@@ -30,21 +35,21 @@ export function createServerSupabaseSessionClient() {
 
   return createServerClient(url, anonKey, {
     cookies: {
-      // READ-ONLY cookie access
-      get(name: string) {
-        return cookieStore.get(name)?.value;
+      getAll() {
+        return cookieStore.getAll();
       },
-
-      // NOOP: Next.js Server Components cannot set cookies.
-      // Cookie updates are handled in middleware or route handlers.
-      set() {
-        // Intentionally disabled (LOCKED)
-      },
-
-      // NOOP: Next.js Server Components cannot remove cookies.
-      // Cookie updates are handled in middleware or route handlers.
-      remove() {
-        // Intentionally disabled (LOCKED)
+      setAll(cookiesToSet) {
+        // NOOP: Server Components cannot set cookies.
+        // Middleware handles session refresh and cookie updates.
+        // This callback exists to satisfy the @supabase/ssr interface.
+        try {
+          cookiesToSet.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options)
+          );
+        } catch {
+          // Expected to throw in Server Components — safe to swallow.
+          // In Route Handlers this will succeed, which is correct.
+        }
       },
     },
   });

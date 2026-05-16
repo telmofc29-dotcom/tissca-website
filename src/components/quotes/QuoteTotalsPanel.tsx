@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { PricingResult } from '@/types/quotes';
+import { formatCurrency } from '@/lib/currency';
 
 interface QuoteTotalsPanelProps {
   totals: PricingResult;
@@ -14,14 +15,6 @@ interface QuoteTotalsPanelProps {
 }
 
 export function QuoteTotalsPanel({ totals, isLoading = false }: QuoteTotalsPanelProps) {
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
 
   if (isLoading) {
     return (

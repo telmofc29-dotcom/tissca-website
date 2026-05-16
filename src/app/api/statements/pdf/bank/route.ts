@@ -1,6 +1,7 @@
-import { createClient } from '@supabase/supabase-js';
 import { NextRequest, NextResponse } from 'next/server';
 import PDFDocument from 'pdfkit';
+import { resolveUserFromToken } from '@/lib/workspace-data';
+import { loadPdfIdentity, type PdfIdentity } from '@/lib/pdf/branding';
 
 export const dynamic = "force-dynamic";
 
@@ -12,26 +13,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    // Initialize Supabase client
-    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-    if (!supabaseUrl || !supabaseServiceKey) {
-      return NextResponse.json(
-        { error: 'Server configuration error' },
-        { status: 500 }
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-    // Get user from auth header token
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
-
-    if (authError || !user) {
+    const resolved = await resolveUserFromToken(token);
+    if (!resolved?.authId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Load branding from document_pdf_info
+    let identity: PdfIdentity | null = null;
+    if (resolved.workspaceId) {
+      identity = await loadPdfIdentity(resolved.workspaceId);
+    }
+
+    const companyName = identity?.company_name || 'TISSCA';
 
     // Get query parameters
     const { searchParams } = new URL(request.url);
@@ -59,13 +53,13 @@ export async function GET(request: NextRequest) {
     const monthName = new Date(year, month, 1).toLocaleString('default', { month: 'long' });
     
     // Header
-    doc.fontSize(24).font('Helvetica-Bold').text('TISSCA', 50, 50);
+    doc.fontSize(24).font('Helvetica-Bold').fillColor(identity?.brand_color || '#1e40af').text(companyName, 50, 50);
+    doc.fillColor('black');
     doc.fontSize(12).font('Helvetica').text('Monthly Bank Statement', { underline: true });
     doc.moveDown(0.5);
     
     // Statement info
     doc.fontSize(11).text(`Period: ${monthName} ${year}`, { lineBreak: false });
-    doc.text(`Account: ${user.email}`);
     doc.text(`Generated: ${new Date().toLocaleDateString()}`);
     doc.moveDown(1);
 
@@ -129,7 +123,7 @@ export async function GET(request: NextRequest) {
 
     // Footer
     doc.fontSize(8).font('Helvetica').fillColor('#999999');
-    doc.text('This is an automated statement from TISSCA. For enquiries, contact support.', 50, 750, {
+    doc.text(`This is an automated statement from ${companyName}. For enquiries, contact support.`, 50, 750, {
       align: 'center',
       width: 500,
     });

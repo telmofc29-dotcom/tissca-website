@@ -177,7 +177,7 @@ export async function signUp(email: string, password: string) {
     email,
     password,
     options: {
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/verified`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/callback`,
     },
   });
 
@@ -217,7 +217,7 @@ export async function resetPassword(email: string) {
   const client = requireBrowserClient();
 
   const { error } = await client.auth.resetPasswordForEmail(email, {
-    redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/reset-password`,
+    redirectTo: `${process.env.NEXT_PUBLIC_BASE_URL}/auth/reset`,
   });
 
   if (error) throw error;

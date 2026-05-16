@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import { getSupabaseClient, getUserProfile } from '@/lib/supabase';
+import { formatCurrency } from '@/lib/currency';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { QuoteTotalsPanel } from '@/components/quotes/QuoteTotalsPanel';
 import { calculateQuoteTotals } from '@/lib/validators/quoteSchemas';
@@ -67,7 +68,7 @@ export default function ClientQuoteViewPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -75,7 +76,7 @@ export default function ClientQuoteViewPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -207,15 +208,6 @@ export default function ClientQuoteViewPage() {
     } finally {
       setUpdating(false);
     }
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   const formatDate = (dateString?: string) => {

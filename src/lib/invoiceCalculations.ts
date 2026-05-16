@@ -5,6 +5,7 @@
  */
 
 import { InvoiceStatus } from '@/types/invoices';
+import { currencyLocale } from '@/lib/currency';
 
 // ============================================================================
 // TYPES
@@ -329,14 +330,15 @@ export function roundToPence(value: number): number {
 }
 
 /**
- * Format a number as currency (GBP)
+ * Format a number as currency.
  * 
  * @param value - Amount to format
  * @param currency - Currency code (default GBP)
  * @returns Formatted string like "£100.50"
  */
 export function formatCurrency(value: number, currency: string = 'GBP'): string {
-  const formatter = new Intl.NumberFormat('en-GB', {
+  const locale = currencyLocale(currency);
+  const formatter = new Intl.NumberFormat(locale, {
     style: 'currency',
     currency,
     minimumFractionDigits: 2,

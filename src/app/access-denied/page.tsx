@@ -18,7 +18,7 @@ export default function AccessDeniedPage() {
 
         <div className="mt-8 flex flex-col sm:flex-row gap-3">
           <Link
-            href="/login"
+            href="/sign-in"
             className="inline-flex items-center justify-center rounded-full px-5 py-2.5 font-semibold bg-[#CBB26B] text-[#0b141b] hover:bg-[#d8c388] transition-colors"
           >
             Log in

@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useParams } from 'next/navigation';
 import { getSupabaseClient, getUserProfile } from '@/lib/supabase';
+import { formatCurrency } from '@/lib/currency';
 import { DashboardShell } from '@/components/layout/DashboardShell';
 import { Invoice, InvoiceItem } from '@/types/invoices';
 import { Client } from '@/types/quotes';
@@ -57,7 +58,7 @@ export default function ClientInvoiceDetailPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -65,7 +66,7 @@ export default function ClientInvoiceDetailPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -150,13 +151,6 @@ export default function ClientInvoiceDetailPage() {
 
     loadInvoice();
   }, [router, invoiceId]);
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-    }).format(amount);
-  };
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-GB', {

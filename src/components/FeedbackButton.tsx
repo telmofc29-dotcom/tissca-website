@@ -1,9 +1,12 @@
 'use client';
 import { useState } from 'react';
 import FeedbackForm from './FeedbackForm';
+import { useLanguage } from '@/i18n/LanguageProvider';
 
 export default function FeedbackButton() {
   const [isOpen, setIsOpen] = useState(false);
+  const { t } = useLanguage();
+  const f = t.member.feedback;
 
   return (
     <>
@@ -11,11 +14,11 @@ export default function FeedbackButton() {
       <button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 w-14 h-14 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all flex items-center justify-center group z-50"
-        title="Help & Feedback"
+        title={f.tooltip}
       >
         <span className="text-xl">💬</span>
         <span className="absolute bottom-full right-0 mb-2 px-3 py-1 bg-slate-900 text-white text-xs rounded-lg whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-          Help & Feedback
+          {f.tooltip}
         </span>
       </button>
 
@@ -32,7 +35,7 @@ export default function FeedbackButton() {
           <div className="relative bg-white rounded-lg shadow-2xl w-full md:w-96 h-[80vh] md:h-auto md:max-h-[80vh] flex flex-col">
             {/* Header */}
             <div className="flex items-center justify-between p-6 border-b border-gray-200">
-              <h2 className="text-xl font-bold text-slate-900">Help & Feedback</h2>
+              <h2 className="text-xl font-bold text-slate-900">{f.title}</h2>
               <button
                 onClick={() => setIsOpen(false)}
                 className="text-gray-500 hover:text-gray-700 text-2xl leading-none"

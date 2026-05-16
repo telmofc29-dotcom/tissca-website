@@ -3,6 +3,8 @@
  * Pure functions for reliable, testable calculations
  */
 
+import { formatCurrency as _fmtCurrency } from '@/lib/currency';
+
 // ============================================================================
 // TILING CALCULATOR
 // ============================================================================
@@ -330,8 +332,8 @@ export function formatVolume(m3: number): string {
   return `${round(m3, 3)} m³`;
 }
 
-export function formatCurrency(amount: number): string {
-  return `£${round(amount, 2).toLocaleString()}`;
+export function formatCurrency(amount: number, currencyCode?: string | null): string {
+  return _fmtCurrency(amount, currencyCode);
 }
 
 // ============================================================================

@@ -1,28 +1,24 @@
 /**
- * brand.ts v1.0.1 (TISSCA Website Rebrand + Domain Canonical)
- * ==========================================================
+ * brand.ts v2.0.0 (TISSCA SaaS Rebrand)
+ * ======================================
  * ✅ NOTES (LOCKED):
  * - Single source of truth for all branding across the platform.
  * - No hard-coded brand strings in components.
  * - JSON-like config only; keep changes minimal and intentional.
  *
- * WHY v1.0.1:
- * - Canonical domain choice: tissca.com (root) is primary.
- * - www.tissca.com should redirect to tissca.com (hosting/DNS).
- * - Base URL + structured data URL updated to avoid www mismatch.
- *
  * VERSION HISTORY:
  * - v1.0.0: Initial config (as provided)
  * - v1.0.1 (2026-02-04): Canonical domain URLs + support email added
+ * - v2.0.0 (2026-03-25): SaaS rebrand — app-first positioning, 4-tier pricing, product nav
  */
 
 export const brandConfig = {
   // Core Identity
   name: 'TISSCA',
   displayName: 'TISSCA',
-  tagline: 'The Construction Authority',
+  tagline: 'Run your trade business smarter',
   description:
-    'Construction authority platform - The global reference for construction, renovations, workmanship standards, and calculations.',
+    'The platform for tradespeople and construction businesses — quotes, jobs, tools, teams, and workflow in one place.',
 
   // Company
   companyName: 'TISSCA',
@@ -38,7 +34,7 @@ export const brandConfig = {
 
   // Contact & Social
   contact: {
-    email: 'hello@tissca.com',
+    email: 'support@tissca.com',
     supportEmail: 'support@tissca.com', // Used for /support (professional support presence)
     phone: null, // Add if needed
   },
@@ -53,7 +49,11 @@ export const brandConfig = {
   colors: {
     primary: '#1f2937', // Dark slate
     secondary: '#374151', // Medium slate
-    accent: '#3b82f6', // Blue
+    accent: '#3b82f6', // Blue (CTAs, links)
+    gold: '#cbb26b', // App-aligned gold accent
+    goldDark: '#b89b4a', // Gold hover state
+    navy: '#0b141b', // App primary background
+    navyBlue: '#2d4152', // App blue tint
     success: '#10b981', // Green
     warning: '#f59e0b', // Amber
     error: '#ef4444', // Red
@@ -102,10 +102,10 @@ export const brandConfig = {
 
   // SEO Defaults
   seo: {
-    defaultTitle: 'TISSCA - Construction Authority',
+    defaultTitle: 'TISSCA — Run Your Trade Business Smarter',
     defaultDescription:
-      'The global reference for construction, renovations, workmanship standards, and calculations.',
-    defaultImage: '/og-image.png', // Update with actual image path when available
+      'The platform for tradespeople and construction businesses — quotes, jobs, tools, teams, and workflow in one place.',
+    defaultImage: '/og-image.png',
     twitterHandle: null,
   },
 
@@ -113,12 +113,9 @@ export const brandConfig = {
   navigation: {
     main: [
       { label: 'Home', href: '/' },
-      { label: 'Is This Done Properly?', href: '/workmanship' },
-      { label: 'How Much Should This Cost?', href: '/construction-costs' },
-      { label: 'Avoid Scams', href: '/avoid-scams' },
-      { label: 'Calculators', href: '/calculators' },
-      { label: 'How To Do It', href: '/guides' },
-      { label: 'Learn', href: '/education' },
+      { label: 'Features', href: '/#features' },
+      { label: 'Pricing', href: '/#plans' },
+      { label: 'Download', href: '/#download' },
     ],
     footer: {
       main: [
@@ -127,11 +124,16 @@ export const brandConfig = {
         { label: 'Terms of Service', href: '/terms' },
         { label: 'Contact', href: '/contact' },
       ],
+      product: [
+        { label: 'Features', href: '/#features' },
+        { label: 'Pricing', href: '/#plans' },
+        { label: 'Download', href: '/#download' },
+      ],
       resources: [
         { label: 'Calculators', href: '/calculators' },
         { label: 'Guides', href: '/guides' },
         { label: 'Standards', href: '/standards' },
-        { label: 'Blog', href: '/blog' },
+        { label: 'Support', href: '/support' },
       ],
     },
   },
@@ -143,49 +145,96 @@ export const brandConfig = {
     name: 'TISSCA',
     url: 'https://tissca.com',
     description:
-      'The global reference for construction, renovations, workmanship standards, and calculations.',
+      'The platform for tradespeople and construction businesses — quotes, jobs, tools, teams, and workflow in one place.',
   },
 
-  // Subscription pricing (Stripe-ready)
+  // Subscription pricing (Stripe-ready, 4-tier)
   pricing: {
     free: {
       tier: 'free',
       name: 'Free',
+      members: 1,
       price: 0,
       currency: 'GBP',
       interval: null,
       stripePriceId: null,
+      positioning: 'Getting started with the basics',
       features: [
-        'Access to all guides & calculators',
+        '1 user',
+        'Access to guides & calculators',
         'Save calculator results',
         'Generate basic quotes',
         'Generate basic invoices',
-        'With TISSCA watermark',
+        'TISSCA watermark on documents',
       ],
       cta: 'Get Started',
     },
     pro: {
       tier: 'pro',
       name: 'Pro',
-      price: 3,
+      members: 1,
+      price: null, // TBD — set when finalised
       currency: 'GBP',
       interval: 'month',
-      stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_MONTHLY, // Set in .env
-      priceAnnual: 20,
-      stripePriceIdAnnual: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_ANNUAL, // Set in .env
+      stripePriceId: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_MONTHLY,
+      priceAnnual: null,
+      stripePriceIdAnnual: process.env.NEXT_PUBLIC_STRIPE_PRICE_ID_ANNUAL,
+      positioning: 'For solo professionals who need the full toolset',
       features: [
+        '1 user',
         'Everything in Free',
-        'No ads anywhere',
-        'Full mobile app access (iOS & Android)',
         'Unlimited quotes & invoices',
-        'Upload your business logo',
         'Remove TISSCA watermark',
-        'Save client details',
+        'No ads anywhere',
+        'Upload business logo',
         'Professional branded documents',
+        'Full mobile app access',
         'Priority support',
       ],
       cta: 'Start Pro',
-      tagline: 'For the price of a coffee',
+      tagline: 'Most popular for individuals',
+    },
+    team: {
+      tier: 'team',
+      name: 'Team Starter',
+      members: 5,
+      price: null, // TBD
+      currency: 'GBP',
+      interval: 'month',
+      stripePriceId: null,
+      positioning: 'For growing teams needing collaboration',
+      features: [
+        'Up to 5 members',
+        'Everything in Pro',
+        'Multi-user workspace',
+        'Team member management',
+        'Shared jobs & clients',
+        'Role-based access',
+        'Team activity feed',
+      ],
+      cta: 'Start Team',
+      tagline: 'Built for collaboration',
+    },
+    teamPro: {
+      tier: 'team-pro',
+      name: 'Team Pro',
+      members: 200,
+      price: null, // TBD
+      currency: 'GBP',
+      interval: 'month',
+      stripePriceId: null,
+      positioning: 'Advanced multi-user operations and deeper control',
+      features: [
+        'Up to 200 members',
+        'Everything in Team Starter',
+        'Advanced reporting',
+        'Custom workflows',
+        'Priority onboarding',
+        'Dedicated support',
+        'API access',
+      ],
+      cta: 'Start Team Pro',
+      tagline: 'Full platform power',
     },
   },
 };

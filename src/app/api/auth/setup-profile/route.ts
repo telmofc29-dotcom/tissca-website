@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
     const { data: existingProfile, error: existingProfileError } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
-      .eq('userId', userId)
+      .eq('id', userId)
       .single();
 
     // If "no rows" => it's fine (we will create). Any other error should be treated as real.
@@ -46,30 +46,36 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Profile already exists' }, { status: 200 });
     }
 
-    // Create business
-    const { data: business, error: businessError } = await supabaseAdmin
-      .from('businesses')
+    // Create workspace (replaces old businesses table)
+    const { data: workspace, error: workspaceError } = await supabaseAdmin
+      .from('workspaces')
       .insert({
-        owner_user_id: userId,
-        name: fullName ? `${fullName}'s Business` : 'My Business',
+        name: fullName ? `${fullName}'s Workspace` : 'My Workspace',
+        created_by: userId,
+        plan_tier: 'free',
       })
       .select()
       .single();
 
-    if (businessError || !business) {
-      console.error('Business creation error:', businessError);
-      return NextResponse.json({ error: 'Failed to create business' }, { status: 500 });
+    if (workspaceError || !workspace) {
+      console.error('Workspace creation error:', workspaceError);
+      return NextResponse.json({ error: 'Failed to create workspace' }, { status: 500 });
     }
 
-    // Create profile
+    // Link user to workspace
+    await supabaseAdmin
+      .from('workspace_members')
+      .upsert(
+        { user_id: userId, workspace_id: workspace.id, role: 'owner' },
+        { onConflict: 'user_id,workspace_id' },
+      );
+
+    // Create user profile
     const { error: profileError } = await supabaseAdmin.from('user_profiles').insert({
-      userId,
-      displayName: fullName || 'New User',
-      country: 'GB',
-      currency: 'GBP',
-      units: 'metric',
-      // If you have a business_id / businessId column in user_profile, you likely want to set it here.
-      // business_id: business.id,
+      id: userId,
+      email: email,
+      full_name: fullName || 'New User',
+      current_workspace_id: workspace.id,
     });
 
     if (profileError) {
@@ -79,8 +85,8 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(
       {
-        message: 'Profile and business created successfully',
-        business_id: business.id,
+        message: 'Profile and workspace created successfully',
+        workspace_id: workspace.id,
       },
       { status: 201 }
     );

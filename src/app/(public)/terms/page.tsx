@@ -174,7 +174,7 @@ export default function TermsPage() {
           <p className="text-secondary">
             You can request deletion of your account by contacting{' '}
             <a
-              className="text-primary underline underline-offset-4"
+              className="text-blue-600 hover:text-blue-700 underline underline-offset-4"
               href={`mailto:${brandConfig.contact.supportEmail || brandConfig.contact.email}`}
             >
               {brandConfig.contact.supportEmail || brandConfig.contact.email}
@@ -211,7 +211,7 @@ export default function TermsPage() {
           <p className="text-secondary">
             Questions about these Terms can be sent to{' '}
             <a
-              className="text-primary underline underline-offset-4"
+              className="text-blue-600 hover:text-blue-700 underline underline-offset-4"
               href={`mailto:${brandConfig.contact.supportEmail || brandConfig.contact.email}`}
             >
               {brandConfig.contact.supportEmail || brandConfig.contact.email}

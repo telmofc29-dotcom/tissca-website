@@ -25,7 +25,7 @@ export default function ClientDashboard() {
 
         if (!user) {
           console.log('[Client] No user found, redirecting to sign-in');
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -36,7 +36,7 @@ export default function ClientDashboard() {
 
         if (!profile || profile.role !== 'client') {
           console.log('[Client] User is not client, redirecting');
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 

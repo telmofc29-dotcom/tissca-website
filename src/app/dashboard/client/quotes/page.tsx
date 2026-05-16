@@ -31,7 +31,7 @@ export default function ClientQuotesPage() {
       try {
         if (!supabase) {
           console.error('[ClientQuotes] Supabase not initialized');
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -42,7 +42,7 @@ export default function ClientQuotesPage() {
         } = await supabase.auth.getUser();
 
         if (userError || !user) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -50,7 +50,7 @@ export default function ClientQuotesPage() {
         const profileData = await getUserProfile(user.id);
 
         if (!profileData) {
-          router.push('/login');
+          router.push('/sign-in');
           return;
         }
 
@@ -81,7 +81,7 @@ export default function ClientQuotesPage() {
         setQuotes((quotesData as Quote[]) || []);
       } catch (error) {
         console.error('Error fetching data:', error);
-        router.push('/login');
+        router.push('/sign-in');
       } finally {
         setLoading(false);
       }

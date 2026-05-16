@@ -1,25 +1,31 @@
-// src/app/(public)/layout.tsx
+// src/app/(public)/layout.tsx v2.0.0
 /**
- * (public)/layout.tsx v1.0.1 (Public Shell + Premium Header)
- * ==========================================================
+ * (public)/layout.tsx v2.0.0 (SaaS Dark Premium Shell)
+ * =====================================================
  * ✅ NOTES (LOCKED):
- * - Public layout wrapper for marketing/help pages.
- * - Adds a premium sticky header with always-visible Log in / Register.
- * - Minimal: does not change routing, data fetching, or auth logic.
- * - Uses global premium theme from root globals.css (espresso + ambient).
+ * - Public layout wrapper for marketing pages only.
+ * - Public chrome MUST live here (NOT in root layout) so member/admin do not inherit it.
+ * - Dark premium surface for SaaS landing page look.
  *
  * VERSION HISTORY:
  * - v1.0.0: Metadata + children only
- * - v1.0.1: Add premium public header shell
+ * - v1.0.1: Public shell + footer
+ * - v1.0.2: Add GlobalHeader + FeedbackButton
+ * - v1.0.3: DEBUG banner
+ * - v1.0.4 (2026-03-01): White public shell
+ * - v1.0.5 (2026-03-01): Light header variant
+ * - v2.0.0 (2026-03-25): Dark premium SaaS shell + product-first header
  */
 
 import type { Metadata } from 'next';
+import { GlobalHeader } from '@/components/GlobalHeader';
 import { GlobalFooter } from '@/components/GlobalFooter';
+import FeedbackButton from '@/components/FeedbackButton';
 import { brandConfig } from '@/config/brand';
 
 export const metadata: Metadata = {
-  title: brandConfig.displayName,
-  description: brandConfig.description,
+  title: brandConfig.seo.defaultTitle,
+  description: brandConfig.seo.defaultDescription,
 };
 
 export default function PublicLayout({
@@ -28,9 +34,13 @@ export default function PublicLayout({
   children: React.ReactNode;
 }) {
   return (
-    <>
-      <main className="flex-grow">{children}</main>
+    <div className="min-h-screen bg-[#0a0f14]">
+      <GlobalHeader tone="dark" />
+
+      <main className="min-h-[calc(100vh-4rem)]">{children}</main>
+
       <GlobalFooter />
-    </>
+      <FeedbackButton />
+    </div>
   );
 }

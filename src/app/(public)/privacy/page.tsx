@@ -61,7 +61,7 @@ export default function PrivacyPage() {
           <p className="text-secondary">
             If you have any questions, contact us at{' '}
             <a
-              className="text-primary underline underline-offset-4"
+              className="text-blue-600 hover:text-blue-700 underline underline-offset-4"
               href={`mailto:${brandConfig.contact.supportEmail || brandConfig.contact.email}`}
             >
               {brandConfig.contact.supportEmail || brandConfig.contact.email}
@@ -220,7 +220,7 @@ export default function PrivacyPage() {
           <p className="text-secondary">
             To exercise your rights, contact us at{' '}
             <a
-              className="text-primary underline underline-offset-4"
+              className="text-blue-600 hover:text-blue-700 underline underline-offset-4"
               href={`mailto:${brandConfig.contact.supportEmail || brandConfig.contact.email}`}
             >
               {brandConfig.contact.supportEmail || brandConfig.contact.email}
@@ -235,7 +235,7 @@ export default function PrivacyPage() {
           <p className="text-secondary">
             You can request account deletion by contacting{' '}
             <a
-              className="text-primary underline underline-offset-4"
+              className="text-blue-600 hover:text-blue-700 underline underline-offset-4"
               href={`mailto:${brandConfig.contact.supportEmail || brandConfig.contact.email}`}
             >
               {brandConfig.contact.supportEmail || brandConfig.contact.email}

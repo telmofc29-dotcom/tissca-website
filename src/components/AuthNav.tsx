@@ -1,9 +1,14 @@
-// src/components/AuthNav.tsx v1.4
+// src/components/AuthNav.tsx v2.3
 //
-// CHANGES (v1.4):
-// - Display Support Mode badge for platform staff (proof-based via /api/user/me response).
-// - Keep existing phase gates to prevent flicker/blank header.
-// - Minimal targeted change only.
+// CHANGES (v2.3):
+// - NAV: Remove "Support Inbox" from AuthNav menus.
+//   - Support Inbox lives under Engineering and should be accessed from /admin/engineering only.
+//   - Keep "Engineering Dashboard" link for engineering roles.
+// - Keep admin-sealed behaviour unchanged.
+// - Keep proof-based logic + role gating unchanged.
+// - Keep variant="menu" behaviour unchanged.
+// - Ensure dropdown closes on navigation and uses onNavigate callback when provided.
+//
 
 'use client';
 
@@ -25,10 +30,31 @@ interface UserProfile {
 
 type AuthPhase = 'loading' | 'loggedOut' | 'checkingServer' | 'ready';
 
-export function AuthNav() {
+const ENGINEERING_ROLES = new Set(['superadmin', 'engineer']);
+
+type AuthNavProps = {
+  variant?: 'dropdown' | 'menu';
+  ui?: 'dark' | 'light';
+  onNavigate?: () => void;
+
+  // Optional class overrides when embedded inside GlobalHeader menu
+  classNameItem?: string;
+  classNameSectionLabel?: string;
+  classNameDivider?: string;
+};
+
+export function AuthNav({
+  variant = 'dropdown',
+  ui = 'dark',
+  onNavigate,
+  classNameItem,
+  classNameSectionLabel,
+  classNameDivider,
+}: AuthNavProps) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [isPlatformStaff, setIsPlatformStaff] = useState(false);
+  const [staffRole, setStaffRole] = useState<string>('');
 
   const [supportModeActive, setSupportModeActive] = useState(false);
   const [supportWorkspaceId, setSupportWorkspaceId] = useState<string | null>(null);
@@ -45,6 +71,8 @@ export function AuthNav() {
   const router = useRouter();
   const pathname = usePathname();
   const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const isAdminPath = pathname?.startsWith('/admin') ?? false;
 
   const validateServerSession = async (token: string) => {
     try {
@@ -70,11 +98,14 @@ export function AuthNav() {
 
       if (response.ok) {
         const data = await response.json();
+
         setProfile(data.profile);
         setIsPlatformStaff(Boolean(data?.is_platform_staff));
 
-        const smActive =
-          Boolean(data?.support_mode?.active) || Boolean(data?.support_mode_enabled);
+        // SINGLE SOURCE OF TRUTH (fail closed)
+        setStaffRole(String(data?.staff_role ?? '').toLowerCase().trim());
+
+        const smActive = Boolean(data?.support_mode?.active) || Boolean(data?.support_mode_enabled);
         const smWorkspace =
           (data?.support_mode?.workspace_id as string | null) ??
           (data?.support_mode_workspace_id as string | null) ??
@@ -86,6 +117,7 @@ export function AuthNav() {
         // Fail closed (do not assume staff/support mode)
         setProfile(null);
         setIsPlatformStaff(false);
+        setStaffRole('');
         setSupportModeActive(false);
         setSupportWorkspaceId(null);
       }
@@ -93,6 +125,7 @@ export function AuthNav() {
       console.error('Failed to fetch profile:', error);
       setProfile(null);
       setIsPlatformStaff(false);
+      setStaffRole('');
       setSupportModeActive(false);
       setSupportWorkspaceId(null);
     } finally {
@@ -108,6 +141,7 @@ export function AuthNav() {
       setUser(null);
       setProfile(null);
       setIsPlatformStaff(false);
+      setStaffRole('');
       setSupportModeActive(false);
       setSupportWorkspaceId(null);
       setServerSessionValid(false);
@@ -129,6 +163,7 @@ export function AuthNav() {
           setUser(null);
           setProfile(null);
           setIsPlatformStaff(false);
+          setStaffRole('');
           setSupportModeActive(false);
           setSupportWorkspaceId(null);
           setServerSessionValid(false);
@@ -146,23 +181,21 @@ export function AuthNav() {
         setUser(nextUser);
         setPhase('checkingServer');
 
-        // Proof-based checks (server must confirm session; profile/staff must be resolved)
         const ok = await validateServerSession(session.access_token);
         if (!ok) {
-          // Server didn't confirm -> do NOT show dropdown
           setServerSessionValid(false);
           setIdentityResolved(true);
           setPhase('loggedOut');
           return;
         }
 
-        // Load staff flag/profile after proof passes
         fetchUserProfile(session.access_token);
       } catch (e) {
         console.error('[AuthNav] init failed:', e);
         setUser(null);
         setProfile(null);
         setIsPlatformStaff(false);
+        setStaffRole('');
         setSupportModeActive(false);
         setSupportWorkspaceId(null);
         setServerSessionValid(false);
@@ -193,6 +226,7 @@ export function AuthNav() {
           setUser(null);
           setProfile(null);
           setIsPlatformStaff(false);
+          setStaffRole('');
           setSupportModeActive(false);
           setSupportWorkspaceId(null);
           setServerSessionValid(false);
@@ -206,6 +240,7 @@ export function AuthNav() {
         setUser(null);
         setProfile(null);
         setIsPlatformStaff(false);
+        setStaffRole('');
         setSupportModeActive(false);
         setSupportWorkspaceId(null);
         setServerSessionValid(false);
@@ -220,7 +255,6 @@ export function AuthNav() {
     };
   }, []);
 
-  // Once identity resolved AND server session is valid AND user exists -> ready
   useEffect(() => {
     if (user && serverSessionValid && identityResolved) {
       setPhase('ready');
@@ -229,6 +263,11 @@ export function AuthNav() {
 
   const handleLogout = async () => {
     try {
+      // Clear server-side httpOnly cookies first
+      try {
+        await fetch('/api/auth/signout', { method: 'POST' });
+      } catch { /* non-critical */ }
+
       if (supabase) {
         await supabase.auth.signOut();
       }
@@ -239,17 +278,24 @@ export function AuthNav() {
     setUser(null);
     setProfile(null);
     setIsPlatformStaff(false);
+    setStaffRole('');
     setSupportModeActive(false);
     setSupportWorkspaceId(null);
     setServerSessionValid(false);
     setIdentityResolved(true);
     setIsDropdownOpen(false);
     setPhase('loggedOut');
-    router.push('/');
-    router.refresh();
+
+    onNavigate?.();
+
+    // Admin-safe redirect: never bounce staff out to public root from inside admin.
+    router.replace(isAdminPath ? '/sign-in' : '/');
   };
 
+  // Dropdown close on outside click (only for variant="dropdown")
   useEffect(() => {
+    if (variant !== 'dropdown') return;
+
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
         setIsDropdownOpen(false);
@@ -260,9 +306,197 @@ export function AuthNav() {
       document.addEventListener('mousedown', handleClickOutside);
       return () => document.removeEventListener('mousedown', handleClickOutside);
     }
-  }, [isDropdownOpen]);
+  }, [isDropdownOpen, variant]);
 
-  // ✅ Always render something (never return null)
+  const displayName = profile?.fullName || user?.name || user?.email || 'Account';
+  const canSeeEngineering = Boolean(isPlatformStaff) && ENGINEERING_ROLES.has(staffRole);
+
+  // ---------- Shared styling helpers ----------
+  const labelCls =
+    classNameSectionLabel ??
+    (ui === 'light'
+      ? 'text-[11px] font-semibold tracking-widest text-slate-500'
+      : 'text-[11px] font-semibold tracking-widest text-white/45');
+
+  const itemCls =
+    classNameItem ??
+    (ui === 'light'
+      ? 'block rounded-xl px-3 py-2.5 text-sm font-medium text-slate-800 hover:text-slate-950 hover:bg-slate-100 no-underline hover:no-underline'
+      : 'block rounded-xl px-3 py-2.5 text-sm font-medium text-white/85 hover:text-white hover:bg-white/5 no-underline hover:no-underline');
+
+  const dividerCls = classNameDivider ?? (ui === 'light' ? 'h-px bg-slate-200' : 'h-px bg-white/10');
+
+  const cardCls =
+    ui === 'light'
+      ? 'rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3'
+      : 'rounded-2xl border border-white/10 bg-white/5 px-3 py-3';
+
+  const nameCls = ui === 'light' ? 'text-sm font-semibold text-slate-900' : 'text-sm font-semibold text-white/95';
+  const metaCls = ui === 'light' ? 'text-xs text-slate-600' : 'text-xs text-white/55';
+
+  // ============================================================
+  // VARIANT: menu (renders inside hamburger panel, no dropdown)
+  // ============================================================
+  if (variant === 'menu') {
+    // Loading state (keep simple)
+    if (phase === 'loading' || phase === 'checkingServer') {
+      return (
+        <div className="px-4 py-3">
+          <p className={labelCls}>ACCOUNT</p>
+          <div className="mt-2">
+            <div className={cardCls}>
+              <p className={nameCls}>Checking session…</p>
+              <p className={metaCls}> </p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // Logged out
+    if (phase === 'loggedOut' || !user || !serverSessionValid) {
+      return (
+        <div className="px-4 py-3">
+          <p className={labelCls}>ACCOUNT</p>
+          <div className="mt-2">
+            <div className={cardCls}>
+              <p className={nameCls}>Not signed in</p>
+              <p className={metaCls}> </p>
+            </div>
+          </div>
+
+          <div className="mt-2 px-0">
+            <Link href="/sign-in" className={itemCls} onClick={onNavigate} role="menuitem">
+              Log in
+            </Link>
+            <Link href="/register" className={itemCls} onClick={onNavigate} role="menuitem">
+              Register
+            </Link>
+          </div>
+        </div>
+      );
+    }
+
+    // Logged in
+    return (
+      <div className="px-4 py-3">
+        <p className={labelCls}>ACCOUNT</p>
+
+        <div className="mt-2">
+          <div className={cardCls}>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className={nameCls}>
+                  <span className="block truncate">{displayName}</span>
+                </p>
+                <p className={metaCls}>
+                  <span className="block truncate">{user.email}</span>
+                </p>
+              </div>
+
+              {isPlatformStaff && supportModeActive && (
+                <span
+                  className={
+                    ui === 'light'
+                      ? 'inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded bg-amber-100 text-amber-800 border border-amber-200'
+                      : 'inline-flex items-center px-2 py-0.5 text-[11px] font-semibold rounded bg-amber-500/15 text-amber-200 border border-amber-500/25'
+                  }
+                  title={supportWorkspaceId ? `Support Mode – Workspace: ${supportWorkspaceId}` : 'Support Mode enabled'}
+                >
+                  Support Mode
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {/* Links */}
+        <div className="mt-2 px-0">
+          {/* ADMIN-SEALED: when inside /admin, do NOT show member/public links */}
+          {!isAdminPath && (
+            <>
+              <Link href="/dashboard" className={itemCls} onClick={onNavigate} role="menuitem">
+                Dashboard
+              </Link>
+              <Link href="/account" className={itemCls} onClick={onNavigate} role="menuitem">
+                Account
+              </Link>
+              <Link href="/app/settings" className={itemCls} onClick={onNavigate} role="menuitem">
+                Settings
+              </Link>
+              <Link href="/app/settings/subscription" className={itemCls} onClick={onNavigate} role="menuitem">
+                Subscription &amp; Billing
+              </Link>
+            </>
+          )}
+
+          {/* Admin */}
+          {isPlatformStaff && (
+            <>
+              <div className={dividerCls} style={{ marginTop: 10, marginBottom: 10 }} />
+              <p className={labelCls}>ADMIN</p>
+
+              <Link href="/admin" className={itemCls} onClick={onNavigate} role="menuitem">
+                Admin Panel
+              </Link>
+              <Link href="/admin/users" className={itemCls} onClick={onNavigate} role="menuitem">
+                Users
+              </Link>
+              <Link href="/admin/settings" className={itemCls} onClick={onNavigate} role="menuitem">
+                Settings
+              </Link>
+              <Link href="/admin/pricing" className={itemCls} onClick={onNavigate} role="menuitem">
+                Pricing
+              </Link>
+              <Link href="/admin/docs" className={itemCls} onClick={onNavigate} role="menuitem">
+                Documents
+              </Link>
+              <Link href="/admin/feedback" className={itemCls} onClick={onNavigate} role="menuitem">
+                Feedback
+              </Link>
+              <Link href="/admin/analytics" className={itemCls} onClick={onNavigate} role="menuitem">
+                Analytics
+              </Link>
+              <Link href="/admin/accountant" className={itemCls} onClick={onNavigate} role="menuitem">
+                Accountant
+              </Link>
+
+              {canSeeEngineering && (
+                <>
+                  <div className={dividerCls} style={{ marginTop: 10, marginBottom: 10 }} />
+                  <p className={labelCls}>ENGINEERING</p>
+
+                  <Link href="/admin/engineering" className={itemCls} onClick={onNavigate} role="menuitem">
+                    Engineering Dashboard
+                  </Link>
+                  {/* Support Inbox removed from AuthNav by design (lives inside Engineering). */}
+                </>
+              )}
+            </>
+          )}
+
+          <div className={dividerCls} style={{ marginTop: 10, marginBottom: 10 }} />
+
+          <button
+            onClick={handleLogout}
+            className={
+              ui === 'light'
+                ? 'block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-700 hover:bg-red-50 transition-colors'
+                : 'block w-full rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-200 hover:bg-red-500/10 transition-colors'
+            }
+            role="menuitem"
+          >
+            Log out
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ============================================================
+  // VARIANT: dropdown (legacy behaviour — functional menu)
+  // ============================================================
+
   if (phase === 'loading' || phase === 'checkingServer') {
     return (
       <div className="flex items-center gap-3">
@@ -275,7 +509,7 @@ export function AuthNav() {
     return (
       <div className="flex items-center gap-3">
         <Link
-          href="/login"
+          href="/sign-in"
           className="px-4 py-2 h-10 flex items-center text-sm font-medium text-primary hover:text-accent transition-colors border border-primary rounded hover:bg-gray-50"
         >
           Log in
@@ -291,11 +525,11 @@ export function AuthNav() {
   }
 
   // On /login specifically, only show if server session is valid (proof-based)
-  if (pathname === '/login' && !serverSessionValid) {
+  if (pathname === '/sign-in' && !serverSessionValid) {
     return (
       <div className="flex items-center gap-3">
         <Link
-          href="/login"
+          href="/sign-in"
           className="px-4 py-2 h-10 flex items-center text-sm font-medium text-primary hover:text-accent transition-colors border border-primary rounded hover:bg-gray-50"
         >
           Log in
@@ -310,8 +544,10 @@ export function AuthNav() {
     );
   }
 
-  // Logged in - Show user profile with settings dropdown
-  const displayName = profile?.fullName || user.name || user.email;
+  const closeDropdownAndNavigate = () => {
+    setIsDropdownOpen(false);
+    onNavigate?.();
+  };
 
   return (
     <div className="relative" ref={dropdownRef}>
@@ -355,167 +591,142 @@ export function AuthNav() {
           aria-orientation="vertical"
         >
           <nav className="flex flex-col py-1">
-            {isPlatformStaff ? (
-              <>
-                <Link
-                  href="/admin"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M2 2h5v5H2zM9 2h5v3H9zM9 7h5v7H9zM2 9h5v5H2z" />
-                  </svg>
-                  <span>Admin Panel</span>
-                </Link>
-
-                <Link
-                  href="/dashboard"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 3h10v10H3z" />
-                    <path d="M5 6h6M5 8h6M5 10h4" />
-                  </svg>
-                  <span>Member Simulator</span>
-                </Link>
-
-                <div className="border-t border-gray-100 my-1" />
-
-                <Link
-                  href="/admin/content"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 3h10v10H3z" />
-                    <path d="M5 6h6M5 8h6M5 10h4" />
-                  </svg>
-                  <span>Content</span>
-                </Link>
-
-                <Link
-                  href="/admin/media"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 4h10v8H3z" />
-                    <path d="M6 7l2-2 3 4" />
-                    <path d="M6 10h6" />
-                  </svg>
-                  <span>Media</span>
-                </Link>
-
-                <Link
-                  href="/admin/analytics"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M3 12V7" />
-                    <path d="M7 12V4" />
-                    <path d="M11 12V9" />
-                    <path d="M2 12h12" />
-                  </svg>
-                  <span>Analytics</span>
-                </Link>
-
-                <Link
-                  href="/admin/revenue"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M8 2v12" />
-                    <path d="M5 5c0-1.5 6-1.5 6 0s-6 1.5-6 3 6 1.5 6 3-6 1.5-6 0" />
-                  </svg>
-                  <span>Revenue</span>
-                </Link>
-
-                <Link
-                  href="/admin/reports"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M4 2h6l2 2v10H4z" />
-                    <path d="M6 7h6M6 9h6M6 11h4" />
-                  </svg>
-                  <span>Reports</span>
-                </Link>
-
-                <Link
-                  href="/admin/users"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
-                  role="menuitem"
-                >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M8 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
-                    <path d="M2 13.5a6 6 0 0 1 12 0" />
-                  </svg>
-                  <span>Users</span>
-                </Link>
-              </>
-            ) : (
+            {/* ADMIN-SEALED: when inside /admin, do NOT show member/public links */}
+            {!isAdminPath && (
               <>
                 <Link
                   href="/dashboard"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
                   role="menuitem"
+                  onClick={closeDropdownAndNavigate}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M2 2h5v5H2zM9 2h5v3H9zM9 7h5v7H9zM2 9h5v5H2z" />
-                  </svg>
-                  <span>Dashboard</span>
+                  Dashboard
                 </Link>
                 <Link
                   href="/account"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
                   role="menuitem"
+                  onClick={closeDropdownAndNavigate}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M8 8a2 2 0 1 0 0-4 2 2 0 0 0 0 4z" />
-                    <path d="M2 13.5a6 6 0 0 1 12 0" />
-                  </svg>
-                  <span>Account</span>
+                  Account
                 </Link>
                 <Link
-                  href="/account/settings"
-                  className="px-4 py-3 text-sm text-secondary hover:bg-gray-50 transition-colors flex items-center gap-2"
-                  onClick={() => setIsDropdownOpen(false)}
+                  href="/app/settings"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
                   role="menuitem"
+                  onClick={closeDropdownAndNavigate}
                 >
-                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <circle cx="8" cy="8" r="1" />
-                    <path d="M8 3v2M8 11v2M13 8h-2M3 8h2" />
-                    <path d="M11.66 4.34l-1.42 1.42M4.34 11.66l-1.42 1.42M11.66 11.66l-1.42-1.42M4.34 4.34l-1.42-1.42" />
-                  </svg>
-                  <span>Settings</span>
+                  Settings
+                </Link>
+                <Link
+                  href="/app/settings/subscription"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Subscription &amp; Billing
                 </Link>
               </>
             )}
 
-            <div className="border-t border-gray-100 my-1" />
+            {isPlatformStaff && (
+              <>
+                <div className="h-px bg-gray-200 my-1" />
+                <span className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-widest text-gray-500">ADMIN</span>
+
+                <Link
+                  href="/admin"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Admin Panel
+                </Link>
+                <Link
+                  href="/admin/users"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Users
+                </Link>
+                <Link
+                  href="/admin/settings"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Settings
+                </Link>
+                <Link
+                  href="/admin/pricing"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Pricing
+                </Link>
+                <Link
+                  href="/admin/docs"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Documents
+                </Link>
+                <Link
+                  href="/admin/feedback"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Feedback
+                </Link>
+                <Link
+                  href="/admin/analytics"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Analytics
+                </Link>
+                <Link
+                  href="/admin/accountant"
+                  className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                  role="menuitem"
+                  onClick={closeDropdownAndNavigate}
+                >
+                  Accountant
+                </Link>
+
+                {canSeeEngineering && (
+                  <>
+                    <div className="h-px bg-gray-200 my-1" />
+                    <span className="px-4 pt-2 pb-1 text-[11px] font-semibold tracking-widest text-gray-500">
+                      ENGINEERING
+                    </span>
+
+                    <Link
+                      href="/admin/engineering"
+                      className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
+                      role="menuitem"
+                      onClick={closeDropdownAndNavigate}
+                    >
+                      Engineering Dashboard
+                    </Link>
+                    {/* Support Inbox removed from AuthNav by design (lives inside Engineering). */}
+                  </>
+                )}
+              </>
+            )}
+
+            <div className="h-px bg-gray-200 my-1" />
+
             <button
               onClick={handleLogout}
               className="px-4 py-3 text-sm text-red-600 hover:bg-red-50 transition-colors text-left font-medium flex items-center gap-2 w-full"
               role="menuitem"
             >
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M13 8H6M11 6l2 2-2 2" />
-                <path d="M8 2H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h4" />
-              </svg>
               <span>Log out</span>
             </button>
           </nav>

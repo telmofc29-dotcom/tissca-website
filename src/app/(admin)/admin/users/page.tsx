@@ -1,44 +1,94 @@
-// src/app/(admin)/admin/users/page.tsx v1.7
+// src/app/(admin)/admin/users/page.tsx v2.2
 //
-// CHANGES (v1.7):
-// - UI FIX: Wide enterprise table now supports horizontal scrolling so last columns are always visible.
-//   - Wrap table in an overflow-x-auto container
-//   - Give table a min-width to prevent column clipping on smaller screens
-// - Keep ALL v1.6 enterprise edit layer and all existing features unchanged.
+// CHANGES (v2.2):
+// - CHANGE: Move Workspace Billing + Voucher Generator out of /admin/users into a dedicated page.
+//   - New dedicated page: /admin/vouchers (admin tooling hub)
+//   - Users page now links to it with a clear CTA
+// - ADD: Bulk email helper on Users page:
+//   - Copy emails for current filtered list (plan/staff/confirmed/search)
+//   - Proof-based: copies what you can see (no guessing)
+// - KEEP: All existing user table, modal tabs, notes, billing modal tab, edit actions, deep-link behaviour.
+//
+// PURPOSE:
+// - Admin Users: enterprise user management (auth + workspace + staff)
+// - Keep user management clean; move heavy billing/voucher tooling to /admin/vouchers.
+//
+// SECURITY (LOCKED / PROOF-BASED):
+// - No member-only controls.
+// - Protected support account cannot be modified.
+// - Proof-based server APIs only (staff-gated).
+//
+// NOTE:
+// - This file must compile.
+// - No refactors beyond what’s necessary for the split + bulk email helper.
 
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/auth-context';
 
 type ApiUserRow = {
-  // v1.5 API: Supabase Auth user id (uuid)
   id: string;
 
   email: string;
   name?: string | null;
   createdAt: string;
 
-  // Auth metadata
   lastSignInAt?: string | null;
   emailConfirmedAt?: string | null;
 
-  // Workspace
   currentWorkspaceId?: string | null;
   planTier?: string | null;
 
-  // Profile row (public.user_profiles)
   profile?: Record<string, any> | null;
 
-  // Staff
   isPlatformStaff?: boolean;
   staffRole?: string | null;
   staffActive?: boolean;
 
-  // Backward compatibility if any older rows still exist in dev
   supabaseId?: string;
+};
+
+type AdminUserNote = {
+  id: string;
+  user_id: string;
+  created_by: string;
+  note: string;
+  created_at: string;
+};
+
+type AdminBillingWorkspaceResponse = {
+  workspace?: {
+    id: string;
+    name: string | null;
+    plan_tier: string | null;
+    subscription_status: string | null;
+    stripe_customer_id: string | null;
+    stripe_subscription_id: string | null;
+    current_period_end: string | null;
+    updated_at?: string | null;
+  } | null;
+  promo_issues?: Array<{
+    id: string;
+    workspace_id: string;
+    code: string;
+    coupon_id: string | null;
+    promotion_code_id: string | null;
+    percent_off: number | null;
+    amount_off: number | null;
+    currency: string | null;
+    duration: string | null;
+    duration_in_months: number | null;
+    max_redemptions: number | null;
+    redeem_by: string | null;
+    created_by: string;
+    created_at: string;
+    // optional future fields
+    kind?: 'campaign' | 'targeted' | null;
+    issued_to_email?: string | null;
+  }>;
 };
 
 const PROTECTED_EMAIL = 'support@tissca.com';
@@ -47,22 +97,18 @@ type PlanFilter = 'all' | 'free' | 'pro' | 'team' | 'unknown';
 type StaffFilter = 'all' | 'staff' | 'members';
 type ConfirmedFilter = 'all' | 'confirmed' | 'unconfirmed';
 
+type ModalTab = 'overview' | 'notes' | 'billing' | 'profile';
+
 function safeLower(v?: string | null) {
   return (v || '').toLowerCase();
 }
 
 function normalizePlanTier(raw?: string | null): 'free' | 'pro' | 'team' | 'unknown' {
   const v = safeLower(raw);
-
-  // Common possibilities we might see in DB/env:
-  // free, pro, team, premium (legacy), starter, business, enterprise, etc.
   if (!v) return 'unknown';
-
   if (v === 'free' || v === 'starter') return 'free';
   if (v === 'pro' || v === 'premium') return 'pro';
   if (v === 'team' || v === 'business' || v === 'enterprise') return 'team';
-
-  // If you later introduce new tiers, we won't break — it will show "unknown" until mapped.
   return 'unknown';
 }
 
@@ -92,7 +138,7 @@ function fmtDate(d?: string | null, mode: 'date' | 'datetime' = 'date') {
   if (!d) return '—';
   const dt = new Date(d);
   if (Number.isNaN(dt.getTime())) return '—';
-  return mode === 'datetime' ? dt.toLocaleString() : dt.toLocaleDateString();
+  return mode === 'datetime' ? dt.toLocaleString('en-GB') : dt.toLocaleDateString('en-GB');
 }
 
 async function copyToClipboard(text: string) {
@@ -103,9 +149,44 @@ async function copyToClipboard(text: string) {
   }
 }
 
+function statusLabel(raw?: string | null) {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (!v) return 'Inactive';
+  if (v === 'active') return 'Active';
+  if (v === 'trialing') return 'Trial';
+  if (v === 'past_due') return 'Past due';
+  if (v === 'canceled' || v === 'cancelled') return 'Cancelled';
+  if (v === 'incomplete') return 'Incomplete';
+  if (v === 'incomplete_expired') return 'Incomplete (expired)';
+  if (v === 'unpaid') return 'Unpaid';
+  return v.split('_').join(' ');
+}
+
+function statusTone(raw?: string | null): 'good' | 'warn' | 'neutral' {
+  const v = String(raw ?? '').trim().toLowerCase();
+  if (v === 'active' || v === 'trialing') return 'good';
+  if (v === 'past_due' || v === 'unpaid' || v === 'incomplete') return 'warn';
+  return 'neutral';
+}
+
+async function readJsonOrText(res: Response): Promise<{ json: any | null; text: string | null }> {
+  try {
+    const ct = res.headers.get('content-type') || '';
+    if (ct.includes('application/json')) {
+      const j = await res.json().catch(() => null);
+      return { json: j, text: null };
+    }
+    const t = await res.text().catch(() => '');
+    return { json: null, text: t || null };
+  } catch {
+    return { json: null, text: null };
+  }
+}
+
 export default function AdminUsersPage() {
   const { isLoggedIn, getAccessToken } = useAuth();
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [users, setUsers] = useState<ApiUserRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -123,6 +204,17 @@ export default function AdminUsersPage() {
   const [selectedUser, setSelectedUser] = useState<ApiUserRow | null>(null);
   const [showRawProfile, setShowRawProfile] = useState(false);
 
+  // Modal tabs
+  const [activeTab, setActiveTab] = useState<ModalTab>('overview');
+
+  // Stripe dashboard links mode
+  const [stripeMode, setStripeMode] = useState<'test' | 'live'>('test');
+
+  // Billing state (per-user modal)
+  const [billingLoading, setBillingLoading] = useState(false);
+  const [billingError, setBillingError] = useState('');
+  const [billing, setBilling] = useState<AdminBillingWorkspaceResponse | null>(null);
+
   // v1.6: Edit modal state
   const [editMode, setEditMode] = useState(false);
   const [editSaving, setEditSaving] = useState(false);
@@ -134,25 +226,69 @@ export default function AdminUsersPage() {
   const [editStaffActive, setEditStaffActive] = useState(false);
   const [editStaffRole, setEditStaffRole] = useState('');
 
+  // v1.8: Notes state
+  const [notes, setNotes] = useState<AdminUserNote[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState('');
+  const [newNote, setNewNote] = useState('');
+  const [noteSaving, setNoteSaving] = useState(false);
+
+  // v1.9: Deep-link guard
+  const [deepLinkHandled, setDeepLinkHandled] = useState(false);
+
+  // Bulk email helper
+  const [bulkEmailMsg, setBulkEmailMsg] = useState<string>('');
+
   const isProtectedAccount = (email?: string) => safeLower(email) === PROTECTED_EMAIL;
 
   useEffect(() => {
     if (!isLoggedIn) {
-      router.push('/login');
+      router.push('/sign-in');
       return;
     }
     loadUsers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoggedIn]);
 
-  // Reset to page 1 whenever filters/search change
+  // v1.9: After users load, if URL asks for openUserId, auto-open the modal (fail closed)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (deepLinkHandled) return;
+    if (!Array.isArray(users) || users.length === 0) return;
+
+    const openUserId = String(searchParams?.get('openUserId') || '').trim();
+    const openUserEmail = String(searchParams?.get('openUserEmail') || '').trim();
+
+    if (!openUserId && !openUserEmail) {
+      setDeepLinkHandled(true);
+      return;
+    }
+
+    if (openUserEmail) {
+      setSearch(openUserEmail);
+    }
+
+    if (openUserId) {
+      const match = users.find((u) => String(u.id || '').trim() === openUserId) || null;
+      if (match) {
+        setSelectedUser(match);
+        setShowRawProfile(false);
+        setActiveTab('overview');
+      }
+    }
+
+    setDeepLinkHandled(true);
+  }, [users, isLoggedIn, deepLinkHandled, searchParams]);
+
   useEffect(() => {
     setPage(1);
   }, [search, planFilter, staffFilter, confirmedFilter]);
 
-  // When a user is selected, initialize edit fields (v1.6)
+  // When a user is selected: init edit fields + notes + reset Billing
   useEffect(() => {
     if (!selectedUser) return;
+
+    setActiveTab('overview');
 
     setEditMode(false);
     setEditSaving(false);
@@ -164,7 +300,25 @@ export default function AdminUsersPage() {
     setEditWorkspaceId(String(p.current_workspace_id ?? selectedUser.currentWorkspaceId ?? '').trim());
     setEditStaffActive(Boolean(selectedUser.staffActive));
     setEditStaffRole(String(selectedUser.staffRole ?? '').trim());
+
+    setNotes([]);
+    setNotesError('');
+    setNewNote('');
+    fetchNotes(selectedUser.id);
+
+    setBilling(null);
+    setBillingError('');
+    setBillingLoading(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUser]);
+
+  // When Billing tab opens, load proof-based billing snapshot
+  useEffect(() => {
+    if (!selectedUser) return;
+    if (activeTab !== 'billing') return;
+    void fetchBillingSnapshot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, selectedUser?.currentWorkspaceId]);
 
   async function loadUsers() {
     try {
@@ -185,7 +339,8 @@ export default function AdminUsersPage() {
         throw new Error(payload?.error || `Failed to load users (HTTP ${response.status})`);
       }
 
-      setUsers(Array.isArray(payload?.users) ? payload.users : []);
+      const list = Array.isArray(payload?.users) ? payload.users : [];
+      setUsers(list);
     } catch (err: any) {
       setUsers([]);
       setError(err?.message || 'Failed to load users');
@@ -271,8 +426,31 @@ export default function AdminUsersPage() {
     link.click();
   }
 
-  // -------- STAFF ACTIONS (existing API behavior) --------
-  // NOTE: route.ts expects userId = Supabase user id (uuid)
+  // -------- BULK EMAIL HELPER --------
+
+  function uniqueEmails(list: ApiUserRow[]) {
+    const set = new Set<string>();
+    for (const u of list) {
+      const e = String(u.email || '').trim().toLowerCase();
+      if (e) set.add(e);
+    }
+    return Array.from(set.values()).sort();
+  }
+
+  async function copyFilteredEmails() {
+    setBulkEmailMsg('');
+    const emails = uniqueEmails(filteredUsers);
+
+    if (emails.length === 0) {
+      setBulkEmailMsg('No emails available for the current filters.');
+      return;
+    }
+
+    await copyToClipboard(emails.join(', '));
+    setBulkEmailMsg(`Copied ${emails.length} email${emails.length === 1 ? '' : 's'} to clipboard.`);
+  }
+
+  // -------- STAFF ACTIONS --------
 
   async function deactivatePlatformStaff(supabaseUserId: string) {
     try {
@@ -320,7 +498,8 @@ export default function AdminUsersPage() {
     }
   }
 
-  // -------- NEW: ADMIN EDIT (v1.6) --------
+  // -------- ADMIN EDIT (v1.6) --------
+
   async function saveUserEdits(userId: string) {
     try {
       setEditError('');
@@ -354,7 +533,6 @@ export default function AdminUsersPage() {
 
       await loadUsers();
 
-      // Refresh selected user from latest list (so modal reflects updated values)
       setSelectedUser((prev) => {
         if (!prev) return prev;
         const updated = users.find((u) => u.id === prev.id);
@@ -367,6 +545,157 @@ export default function AdminUsersPage() {
     } finally {
       setEditSaving(false);
     }
+  }
+
+  // -------- NOTES (v1.8) --------
+
+  async function fetchNotes(userId: string) {
+    try {
+      setNotesError('');
+      setNotesLoading(true);
+
+      const token = await getAccessToken();
+      if (!token) throw new Error('No auth token');
+
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/notes`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || `Failed to load notes (HTTP ${response.status})`);
+      }
+
+      setNotes(Array.isArray(data?.notes) ? data.notes : []);
+    } catch (err: any) {
+      setNotes([]);
+      setNotesError(err?.message || 'Failed to load notes');
+    } finally {
+      setNotesLoading(false);
+    }
+  }
+
+  async function addNote(userId: string) {
+    try {
+      setNotesError('');
+      setNoteSaving(true);
+
+      const token = await getAccessToken();
+      if (!token) throw new Error('No auth token');
+
+      const note = newNote.trim();
+      if (!note) {
+        setNotesError('Please write a note first.');
+        return;
+      }
+
+      const response = await fetch(`/api/admin/users/${encodeURIComponent(userId)}/notes`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ note }),
+      });
+
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(data?.error || data?.message || `Failed (HTTP ${response.status})`);
+      }
+
+      setNewNote('');
+      await fetchNotes(userId);
+    } catch (err: any) {
+      setNotesError(err?.message || 'Failed to add note');
+    } finally {
+      setNoteSaving(false);
+    }
+  }
+
+  // -------- BILLING (per-user modal) --------
+
+  function stripeCustomerUrl(id: string) {
+    const safe = String(id || '').trim();
+    if (!safe) return '';
+    const prefix = stripeMode === 'test' ? 'test/' : '';
+    return `https://dashboard.stripe.com/${prefix}customers/${encodeURIComponent(safe)}`;
+  }
+
+  function stripeSubscriptionUrl(id: string) {
+    const safe = String(id || '').trim();
+    if (!safe) return '';
+    const prefix = stripeMode === 'test' ? 'test/' : '';
+    return `https://dashboard.stripe.com/${prefix}subscriptions/${encodeURIComponent(safe)}`;
+  }
+
+  async function fetchBillingSnapshot() {
+    if (!selectedUser) return;
+    const wsId = String(selectedUser.currentWorkspaceId || '').trim();
+    if (!wsId) {
+      setBilling(null);
+      setBillingError('No workspace_id on this user. Billing is workspace-scoped, so there is nothing to load.');
+      return;
+    }
+
+    try {
+      setBillingError('');
+      setBillingLoading(true);
+      setBilling(null);
+
+      const token = await getAccessToken();
+      if (!token) throw new Error('No auth token');
+
+      const res = await fetch(`/api/admin/billing/workspace?workspace_id=${encodeURIComponent(wsId)}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
+        cache: 'no-store',
+      });
+
+      const { json, text } = await readJsonOrText(res);
+
+      if (!res.ok) {
+        const requestId =
+          res.headers.get('x-request-id') || res.headers.get('x-vercel-id') || res.headers.get('cf-ray') || '';
+
+        const serverMsg =
+          json?.error ||
+          json?.code ||
+          json?.message ||
+          json?.details ||
+          (text ? text.slice(0, 500) : null) ||
+          `Failed (HTTP ${res.status})`;
+
+        const msg = requestId ? `${serverMsg} (req: ${requestId})` : serverMsg;
+        throw new Error(msg);
+      }
+
+      setBilling((json as AdminBillingWorkspaceResponse) || null);
+    } catch (e: any) {
+      setBilling(null);
+      setBillingError(e?.message || 'Failed to load billing snapshot.');
+    } finally {
+      setBillingLoading(false);
+    }
+  }
+
+  function TabButton(props: { tab: ModalTab; label: string }) {
+    const on = activeTab === props.tab;
+    return (
+      <button
+        type="button"
+        onClick={() => setActiveTab(props.tab)}
+        className={`text-xs px-3 py-2 rounded border font-semibold ${
+          on
+            ? 'bg-slate-900 text-white border-slate-900'
+            : 'bg-white text-slate-700 border-gray-300 hover:bg-gray-50'
+        }`}
+      >
+        {props.label}
+      </button>
+    );
   }
 
   return (
@@ -397,6 +726,60 @@ export default function AdminUsersPage() {
             >
               Export CSV
             </button>
+          </div>
+        </div>
+
+        {/* Vouchers CTA (moved out of this page) */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Vouchers & Billing Tools</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Voucher generator (campaign + targeted/email-locked) and workspace billing snapshots live on a dedicated page.
+              </p>
+            </div>
+
+            <Link
+              href="/admin/vouchers"
+              className="inline-flex items-center justify-center text-sm bg-slate-900 text-white px-4 py-2 rounded font-semibold hover:bg-slate-800"
+            >
+              Open Voucher Generator →
+            </Link>
+          </div>
+
+          <div className="mt-3 text-xs text-gray-500">
+            Reason: keep /admin/users focused. Vouchers are billing tools and grow quickly (campaigns, targeting, portal rules).
+          </div>
+        </div>
+
+        {/* Bulk email helper */}
+        <div className="bg-white rounded-lg border border-gray-200 p-6 mb-6">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h2 className="text-lg font-bold text-slate-900">Bulk email helper</h2>
+              <p className="mt-1 text-sm text-gray-600">
+                Copies email addresses for the <span className="font-semibold">current filters</span> (search/plan/staff/confirmed).
+                Use for sending campaign vouchers.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={copyFilteredEmails}
+              className="text-sm border border-gray-300 bg-white px-3 py-2 rounded hover:bg-gray-50 font-semibold text-slate-900"
+            >
+              Copy filtered emails
+            </button>
+          </div>
+
+          {bulkEmailMsg && (
+            <div className="mt-4 p-3 rounded border border-amber-200 bg-amber-50 text-amber-900 text-sm">
+              {bulkEmailMsg}
+            </div>
+          )}
+
+          <div className="mt-3 text-[11px] text-gray-500">
+            Tip: bulk vouchers are not email-locked. For single-user vouchers, generate a targeted voucher from the Voucher Generator page.
           </div>
         </div>
 
@@ -448,32 +831,14 @@ export default function AdminUsersPage() {
             Showing <span className="font-semibold text-slate-900">{filteredUsers.length}</span> of{' '}
             <span className="font-semibold text-slate-900">{users.length}</span> users
           </span>
-
-          <div className="flex items-center gap-2 text-xs">
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gray-200 bg-white">
-              <span className="h-2 w-2 rounded-full bg-green-500" />
-              <span className="text-gray-700">Confirmed</span>
-            </span>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gray-200 bg-white">
-              <span className="h-2 w-2 rounded-full bg-indigo-500" />
-              <span className="text-gray-700">Team</span>
-            </span>
-            <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-gray-200 bg-white">
-              <span className="h-2 w-2 rounded-full bg-purple-500" />
-              <span className="text-gray-700">Pro</span>
-            </span>
-          </div>
         </div>
 
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">{error}</div>
-        )}
+        {error && <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg">{error}</div>}
 
         {loading ? (
           <p className="text-gray-700">Loading users...</p>
         ) : (
           <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
-            {/* v1.7: Horizontal scroll wrapper for wide tables */}
             <div className="overflow-x-auto">
               <table className="w-full min-w-[1200px] text-sm">
                 <thead className="bg-gray-50 border-b border-gray-200">
@@ -582,6 +947,7 @@ export default function AdminUsersPage() {
                               onClick={() => {
                                 setSelectedUser(u);
                                 setShowRawProfile(false);
+                                setActiveTab('overview');
                               }}
                               className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-100"
                             >
@@ -654,293 +1020,558 @@ export default function AdminUsersPage() {
         {/* View Modal */}
         {selectedUser && (
           <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50">
-            <div className="bg-white w-full max-w-3xl rounded-lg border border-gray-200 shadow-xl text-slate-900 overflow-hidden">
+            <div className="bg-white w-full max-w-4xl rounded-lg border border-gray-200 shadow-xl text-slate-900 overflow-hidden">
               <div className="p-6 border-b border-gray-100 flex items-start justify-between gap-4">
                 <div>
                   <h3 className="text-lg font-bold">User Details</h3>
-                  <p className="text-sm text-gray-600">Auth + workspace + staff + profile snapshot (admin view)</p>
+                  <p className="text-sm text-gray-600">Auth + workspace + staff + billing + profile snapshot (admin view)</p>
                 </div>
 
-                <button
-                  onClick={() => setSelectedUser(null)}
-                  className="px-3 py-2 border border-gray-300 rounded bg-white hover:bg-gray-50 text-sm font-semibold"
-                  type="button"
-                >
-                  Close
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setSelectedUser(null)}
+                    className="px-3 py-2 border border-gray-300 rounded bg-white hover:bg-gray-50 text-sm font-semibold"
+                    type="button"
+                  >
+                    Close
+                  </button>
+                </div>
               </div>
 
-              <div className="p-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Identity */}
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-bold text-slate-900">Identity</h4>
-                    <span
-                      className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${planBadgeClasses(
-                        selectedUser.planTier
-                      )}`}
-                    >
-                      {formatPlanLabel(selectedUser.planTier)} Plan
-                    </span>
-                  </div>
+              {/* Tabs */}
+              <div className="px-6 pt-4 flex flex-wrap items-center gap-2">
+                <TabButton tab="overview" label="Overview" />
+                <TabButton tab="billing" label="Billing" />
+                <TabButton tab="notes" label="Internal Notes" />
+                <TabButton tab="profile" label="Profile" />
+              </div>
 
-                  <div className="space-y-2 text-sm text-gray-700">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-gray-500">Email</div>
-                        <div className="font-semibold text-slate-900">{selectedUser.email || '—'}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(selectedUser.email || '')}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                      >
-                        Copy
-                      </button>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-gray-500">Name</div>
-                        <div>{(selectedUser.name || selectedUser.profile?.full_name || '—') as string}</div>
-                      </div>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-gray-500">Supabase User ID (UUID)</div>
-                        <div className="font-mono text-xs break-all">{selectedUser.id || '—'}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(selectedUser.id || '')}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                      >
-                        Copy
-                      </button>
-                    </div>
-
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-xs text-gray-500">Workspace ID</div>
-                        <div className="font-mono text-xs break-all">{selectedUser.currentWorkspaceId || '—'}</div>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => copyToClipboard(selectedUser.currentWorkspaceId || '')}
-                        className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
-                        disabled={!selectedUser.currentWorkspaceId}
-                      >
-                        Copy
-                      </button>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Auth + Staff */}
-                <div className="rounded-lg border border-gray-200 p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h4 className="text-sm font-bold text-slate-900">Auth & Staff</h4>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        disabled={isProtectedAccount(selectedUser.email)}
-                        onClick={() => {
-                          setEditError('');
-                          setEditMode((v) => !v);
-                        }}
-                        className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
-                        title={isProtectedAccount(selectedUser.email) ? 'Protected account cannot be edited' : undefined}
-                      >
-                        {editMode ? 'Cancel edit' : 'Edit'}
-                      </button>
-
-                      {editMode && (
-                        <button
-                          type="button"
-                          disabled={editSaving || isProtectedAccount(selectedUser.email)}
-                          onClick={() => saveUserEdits(selectedUser.id)}
-                          className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              <div className="p-6">
+                {/* OVERVIEW TAB */}
+                {activeTab === 'overview' && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    {/* Identity */}
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-bold text-slate-900">Identity</h4>
+                        <span
+                          className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${planBadgeClasses(
+                            selectedUser.planTier
+                          )}`}
                         >
-                          {editSaving ? 'Saving…' : 'Save'}
-                        </button>
+                          {formatPlanLabel(selectedUser.planTier)} Plan
+                        </span>
+                      </div>
+
+                      <div className="space-y-2 text-sm text-gray-700">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs text-gray-500">Email</div>
+                            <div className="font-semibold text-slate-900">{selectedUser.email || '—'}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(selectedUser.email || '')}
+                            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                          >
+                            Copy
+                          </button>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs text-gray-500">Name</div>
+                            <div>{(selectedUser.name || selectedUser.profile?.full_name || '—') as string}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs text-gray-500">Supabase User ID (UUID)</div>
+                            <div className="font-mono text-xs break-all">{selectedUser.id || '—'}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(selectedUser.id || '')}
+                            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                          >
+                            Copy
+                          </button>
+                        </div>
+
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-xs text-gray-500">Workspace ID</div>
+                            <div className="font-mono text-xs break-all">{selectedUser.currentWorkspaceId || '—'}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => copyToClipboard(selectedUser.currentWorkspaceId || '')}
+                            className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                            disabled={!selectedUser.currentWorkspaceId}
+                          >
+                            Copy
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Auth + Staff */}
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h4 className="text-sm font-bold text-slate-900">Auth & Staff</h4>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={isProtectedAccount(selectedUser.email)}
+                            onClick={() => {
+                              setEditError('');
+                              setEditMode((v) => !v);
+                            }}
+                            className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            title={isProtectedAccount(selectedUser.email) ? 'Protected account cannot be edited' : undefined}
+                          >
+                            {editMode ? 'Cancel edit' : 'Edit'}
+                          </button>
+
+                          {editMode && (
+                            <button
+                              type="button"
+                              disabled={editSaving || isProtectedAccount(selectedUser.email)}
+                              onClick={() => saveUserEdits(selectedUser.id)}
+                              className="text-xs px-3 py-1.5 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              {editSaving ? 'Saving…' : 'Save'}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {editError && (
+                        <div className="mb-3 p-3 text-sm bg-red-50 border border-red-200 text-red-700 rounded">{editError}</div>
+                      )}
+
+                      {!editMode ? (
+                        <>
+                          <div className="grid grid-cols-2 gap-3 text-sm">
+                            <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                              <div className="text-xs text-gray-500">Email confirmed</div>
+                              <div className="font-semibold text-slate-900">{selectedUser.emailConfirmedAt ? 'Yes' : 'No'}</div>
+                              <div className="text-xs text-gray-500 mt-1">{fmtDate(selectedUser.emailConfirmedAt, 'datetime')}</div>
+                            </div>
+
+                            <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                              <div className="text-xs text-gray-500">Last sign-in</div>
+                              <div className="font-semibold text-slate-900">{selectedUser.lastSignInAt ? 'Recorded' : '—'}</div>
+                              <div className="text-xs text-gray-500 mt-1">{fmtDate(selectedUser.lastSignInAt, 'datetime')}</div>
+                            </div>
+
+                            <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                              <div className="text-xs text-gray-500">Staff active</div>
+                              <div className="font-semibold text-slate-900">{selectedUser.staffActive ? 'Yes' : 'No'}</div>
+                            </div>
+
+                            <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                              <div className="text-xs text-gray-500">Staff role</div>
+                              <div className="font-mono text-xs font-semibold text-slate-900">{selectedUser.staffRole || '—'}</div>
+                            </div>
+
+                            <div className="rounded border border-gray-200 p-3 bg-gray-50 col-span-2">
+                              <div className="text-xs text-gray-500">Joined</div>
+                              <div className="font-semibold text-slate-900">{fmtDate(selectedUser.createdAt, 'datetime')}</div>
+                            </div>
+                          </div>
+
+                          <div className="mt-4 flex flex-wrap items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={isProtectedAccount(selectedUser.email) || !selectedUser.staffActive}
+                              onClick={() => deactivatePlatformStaff(selectedUser.id)}
+                              className="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                              title={!selectedUser.staffActive ? 'User is not active staff' : undefined}
+                            >
+                              Deactivate staff
+                            </button>
+
+                            <button
+                              type="button"
+                              disabled={isProtectedAccount(selectedUser.email)}
+                              onClick={() => removePlatformStaff(selectedUser.id)}
+                              className="text-xs px-3 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                              Remove staff record
+                            </button>
+
+                            <div className="text-xs text-gray-500 ml-auto">Protected accounts cannot be modified.</div>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-3 text-sm">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Full name (profile)</div>
+                              <input
+                                value={editFullName}
+                                onChange={(e) => setEditFullName(e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 bg-white"
+                                placeholder="Full name"
+                              />
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Profile email (user_profiles.email)</div>
+                              <input
+                                value={editProfileEmail}
+                                onChange={(e) => setEditProfileEmail(e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 bg-white"
+                                placeholder="email@example.com"
+                              />
+                            </div>
+
+                            <div className="md:col-span-2">
+                              <div className="text-xs text-gray-500 mb-1">Current workspace ID</div>
+                              <input
+                                value={editWorkspaceId}
+                                onChange={(e) => setEditWorkspaceId(e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 bg-white font-mono text-xs"
+                                placeholder="workspace uuid (or leave blank)"
+                              />
+                            </div>
+
+                            <div>
+                              <div className="text-xs text-gray-500 mb-1">Staff role</div>
+                              <input
+                                value={editStaffRole}
+                                onChange={(e) => setEditStaffRole(e.target.value)}
+                                className="w-full border border-gray-300 rounded px-3 py-2 bg-white font-mono text-xs"
+                                placeholder="e.g. admin, support, ops"
+                              />
+                            </div>
+
+                            <div className="flex items-center gap-2 pt-6">
+                              <input
+                                id="staffActive"
+                                type="checkbox"
+                                checked={editStaffActive}
+                                onChange={(e) => setEditStaffActive(e.target.checked)}
+                                className="h-4 w-4"
+                              />
+                              <label htmlFor="staffActive" className="text-gray-700">
+                                Staff active
+                              </label>
+                            </div>
+                          </div>
+
+                          <div className="text-xs text-gray-500">
+                            Saving uses <span className="font-mono">PATCH /api/admin/users/{'{id}'}</span>.
+                          </div>
+                        </div>
                       )}
                     </div>
                   </div>
+                )}
 
-                  {editError && (
-                    <div className="mb-3 p-3 text-sm bg-red-50 border border-red-200 text-red-700 rounded">
-                      {editError}
-                    </div>
-                  )}
-
-                  {!editMode ? (
-                    <>
-                      <div className="grid grid-cols-2 gap-3 text-sm">
-                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
-                          <div className="text-xs text-gray-500">Email confirmed</div>
-                          <div className="font-semibold text-slate-900">{selectedUser.emailConfirmedAt ? 'Yes' : 'No'}</div>
-                          <div className="text-xs text-gray-500 mt-1">{fmtDate(selectedUser.emailConfirmedAt, 'datetime')}</div>
+                {/* BILLING TAB */}
+                {activeTab === 'billing' && (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Billing (workspace-scoped)</h4>
+                          <p className="mt-1 text-xs text-gray-600">Proof-based snapshot. No guessing. Requires a workspace_id on this user.</p>
                         </div>
 
-                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
-                          <div className="text-xs text-gray-500">Last sign-in</div>
-                          <div className="font-semibold text-slate-900">{selectedUser.lastSignInAt ? 'Recorded' : '—'}</div>
-                          <div className="text-xs text-gray-500 mt-1">{fmtDate(selectedUser.lastSignInAt, 'datetime')}</div>
-                        </div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <div className="text-xs text-gray-600">Stripe mode</div>
+                          <select
+                            value={stripeMode}
+                            onChange={(e) => setStripeMode(e.target.value as 'test' | 'live')}
+                            className="border border-gray-300 bg-white text-slate-900 rounded px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-blue-200"
+                          >
+                            <option value="test">Test</option>
+                            <option value="live">Live</option>
+                          </select>
 
-                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
-                          <div className="text-xs text-gray-500">Staff active</div>
-                          <div className="font-semibold text-slate-900">{selectedUser.staffActive ? 'Yes' : 'No'}</div>
-                        </div>
-
-                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
-                          <div className="text-xs text-gray-500">Staff role</div>
-                          <div className="font-mono text-xs font-semibold text-slate-900">{selectedUser.staffRole || '—'}</div>
-                        </div>
-
-                        <div className="rounded border border-gray-200 p-3 bg-gray-50 col-span-2">
-                          <div className="text-xs text-gray-500">Joined</div>
-                          <div className="font-semibold text-slate-900">{fmtDate(selectedUser.createdAt, 'datetime')}</div>
+                          <button
+                            type="button"
+                            onClick={fetchBillingSnapshot}
+                            disabled={billingLoading}
+                            className="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            {billingLoading ? 'Refreshing…' : 'Refresh'}
+                          </button>
                         </div>
                       </div>
 
-                      <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {billingError && (
+                        <div className="mt-4 p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">{billingError}</div>
+                      )}
+
+                      {billingLoading && <div className="mt-4 text-sm text-gray-600">Loading billing snapshot…</div>}
+
+                      {!!billing?.workspace && (
+                        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                          <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                            <div className="text-xs text-gray-500">Workspace</div>
+                            <div className="font-semibold text-slate-900">{billing.workspace?.name || '—'}</div>
+                            <div className="mt-1 font-mono text-xs break-all text-gray-600">{billing.workspace?.id || '—'}</div>
+                          </div>
+
+                          <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                            <div className="text-xs text-gray-500">Plan & status</div>
+                            <div className="mt-1 flex flex-wrap items-center gap-2">
+                              <span
+                                className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${planBadgeClasses(
+                                  billing.workspace?.plan_tier
+                                )}`}
+                              >
+                                {formatPlanLabel(billing.workspace?.plan_tier)}
+                              </span>
+
+                              <span
+                                className={`inline-flex items-center px-2 py-1 text-xs font-semibold rounded border ${
+                                  statusTone(billing.workspace?.subscription_status) === 'good'
+                                    ? 'bg-green-50 text-green-700 border-green-200'
+                                    : statusTone(billing.workspace?.subscription_status) === 'warn'
+                                      ? 'bg-amber-50 text-amber-800 border-amber-200'
+                                      : 'bg-gray-50 text-gray-700 border-gray-200'
+                                }`}
+                              >
+                                {statusLabel(billing.workspace?.subscription_status)}
+                              </span>
+                            </div>
+                            <div className="mt-2 text-xs text-gray-600">
+                              Next billing date: <span className="font-semibold">{fmtDate(billing.workspace?.current_period_end, 'date')}</span>
+                            </div>
+                          </div>
+
+                          <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                            <div className="text-xs text-gray-500">Stripe IDs</div>
+
+                            <div className="mt-2 space-y-2">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-[11px] text-gray-500">Customer</div>
+                                  <div className="font-mono text-xs break-all text-slate-900">{billing.workspace?.stripe_customer_id || '—'}</div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(billing.workspace?.stripe_customer_id || '')}
+                                    disabled={!billing.workspace?.stripe_customer_id}
+                                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    Copy
+                                  </button>
+                                  <a
+                                    href={billing.workspace?.stripe_customer_id ? stripeCustomerUrl(billing.workspace.stripe_customer_id) : undefined}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`text-xs px-2 py-1 rounded border border-gray-300 ${
+                                      billing.workspace?.stripe_customer_id
+                                        ? 'hover:bg-gray-50 text-gray-700'
+                                        : 'opacity-50 pointer-events-none text-gray-400'
+                                    }`}
+                                  >
+                                    Open
+                                  </a>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="min-w-0">
+                                  <div className="text-[11px] text-gray-500">Subscription</div>
+                                  <div className="font-mono text-xs break-all text-slate-900">{billing.workspace?.stripe_subscription_id || '—'}</div>
+                                </div>
+                                <div className="flex items-center gap-2 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => copyToClipboard(billing.workspace?.stripe_subscription_id || '')}
+                                    disabled={!billing.workspace?.stripe_subscription_id}
+                                    className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50 disabled:opacity-50"
+                                  >
+                                    Copy
+                                  </button>
+                                  <a
+                                    href={billing.workspace?.stripe_subscription_id ? stripeSubscriptionUrl(billing.workspace.stripe_subscription_id) : undefined}
+                                    target="_blank"
+                                    rel="noreferrer"
+                                    className={`text-xs px-2 py-1 rounded border border-gray-300 ${
+                                      billing.workspace?.stripe_subscription_id
+                                        ? 'hover:bg-gray-50 text-gray-700'
+                                        : 'opacity-50 pointer-events-none text-gray-400'
+                                    }`}
+                                  >
+                                    Open
+                                  </a>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="mt-2 text-[11px] text-gray-500">Stripe shortcuts do not require API access (safe). Mode toggle only changes dashboard path.</div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Vouchers moved</h4>
+                          <p className="mt-1 text-xs text-gray-600">
+                            Voucher creation is now on <span className="font-mono">/admin/vouchers</span> to avoid this modal becoming too heavy.
+                          </p>
+                        </div>
+
+                        <Link
+                          href="/admin/vouchers"
+                          className="text-xs px-4 py-2 rounded bg-slate-900 text-white font-semibold hover:bg-slate-800"
+                        >
+                          Open Voucher Generator →
+                        </Link>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* NOTES TAB */}
+                {activeTab === 'notes' && (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Internal Notes</h4>
+                          <p className="mt-1 text-xs text-gray-600">Private staff notes (not visible to members).</p>
+                        </div>
                         <button
                           type="button"
-                          disabled={isProtectedAccount(selectedUser.email) || !selectedUser.staffActive}
-                          onClick={() => deactivatePlatformStaff(selectedUser.id)}
-                          className="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={!selectedUser.staffActive ? 'User is not active staff' : undefined}
+                          onClick={() => fetchNotes(selectedUser.id)}
+                          disabled={notesLoading}
+                          className="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                         >
-                          Deactivate staff
+                          {notesLoading ? 'Refreshing…' : 'Refresh'}
                         </button>
+                      </div>
+
+                      {notesError && (
+                        <div className="mt-4 p-3 rounded bg-red-50 border border-red-200 text-red-700 text-sm">{notesError}</div>
+                      )}
+
+                      <div className="mt-4 grid grid-cols-1 gap-3">
+                        <textarea
+                          value={newNote}
+                          onChange={(e) => setNewNote(e.target.value)}
+                          className="w-full min-h-[120px] border border-gray-300 rounded px-3 py-2 bg-white text-sm"
+                          placeholder="Write a private note…"
+                          disabled={noteSaving}
+                        />
+
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="text-[11px] text-gray-500">
+                            Adds a note via <span className="font-mono">POST /api/admin/users/{'{id}'}/notes</span>.
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => addNote(selectedUser.id)}
+                            disabled={noteSaving}
+                            className="text-xs px-4 py-2 rounded bg-blue-600 text-white font-semibold hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {noteSaving ? 'Saving…' : 'Add note'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <h4 className="text-sm font-bold text-slate-900">Note history</h4>
+
+                      {notesLoading ? (
+                        <div className="mt-3 text-sm text-gray-600">Loading notes…</div>
+                      ) : notes.length === 0 ? (
+                        <div className="mt-3 text-sm text-gray-600">No notes yet.</div>
+                      ) : (
+                        <div className="mt-3 space-y-3">
+                          {notes.map((n) => (
+                            <div key={n.id} className="rounded border border-gray-200 p-3 bg-gray-50">
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="text-xs text-gray-600">
+                                  <span className="font-semibold text-slate-900">Created</span>: {fmtDate(n.created_at, 'datetime')}
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={() => copyToClipboard(n.id)}
+                                  className="text-xs px-2 py-1 rounded border border-gray-300 hover:bg-gray-50"
+                                  title="Copy note id"
+                                >
+                                  Copy id
+                                </button>
+                              </div>
+
+                              <div className="mt-2 text-sm text-slate-900 whitespace-pre-wrap">{n.note}</div>
+
+                              <div className="mt-2 text-[11px] text-gray-500 font-mono break-all">created_by: {n.created_by}</div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* PROFILE TAB */}
+                {activeTab === 'profile' && (
+                  <div className="space-y-4">
+                    <div className="rounded-lg border border-gray-200 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-bold text-slate-900">Profile snapshot</h4>
+                          <p className="mt-1 text-xs text-gray-600">Raw user_profiles payload (for diagnostics). Use carefully.</p>
+                        </div>
 
                         <button
                           type="button"
-                          disabled={isProtectedAccount(selectedUser.email)}
-                          onClick={() => removePlatformStaff(selectedUser.id)}
-                          className="text-xs px-3 py-2 rounded border border-red-300 text-red-700 hover:bg-red-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                          onClick={() => setShowRawProfile((v) => !v)}
+                          className="text-xs px-3 py-2 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
                         >
-                          Remove staff record
+                          {showRawProfile ? 'Hide raw' : 'Show raw'}
                         </button>
-
-                        <div className="text-xs text-gray-500 ml-auto">Protected accounts cannot be modified.</div>
                       </div>
-                    </>
-                  ) : (
-                    <div className="space-y-3 text-sm">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Full name (profile)</div>
-                          <input
-                            value={editFullName}
-                            onChange={(e) => setEditFullName(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 bg-white"
-                            placeholder="Full name"
-                          />
+
+                      <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                          <div className="text-xs text-gray-500">profile.full_name</div>
+                          <div className="font-semibold text-slate-900">{String(selectedUser.profile?.full_name ?? '—')}</div>
                         </div>
 
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Profile email (user_profiles.email)</div>
-                          <input
-                            value={editProfileEmail}
-                            onChange={(e) => setEditProfileEmail(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 bg-white"
-                            placeholder="email@example.com"
-                          />
+                        <div className="rounded border border-gray-200 p-3 bg-gray-50">
+                          <div className="text-xs text-gray-500">profile.email</div>
+                          <div className="font-semibold text-slate-900">{String(selectedUser.profile?.email ?? '—')}</div>
                         </div>
 
-                        <div className="md:col-span-2">
-                          <div className="text-xs text-gray-500 mb-1">Current workspace ID</div>
-                          <input
-                            value={editWorkspaceId}
-                            onChange={(e) => setEditWorkspaceId(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 bg-white font-mono text-xs"
-                            placeholder="workspace uuid (or leave blank)"
-                          />
-                        </div>
-
-                        <div>
-                          <div className="text-xs text-gray-500 mb-1">Staff role</div>
-                          <input
-                            value={editStaffRole}
-                            onChange={(e) => setEditStaffRole(e.target.value)}
-                            className="w-full border border-gray-300 rounded px-3 py-2 bg-white font-mono text-xs"
-                            placeholder="e.g. admin, support, ops"
-                          />
-                        </div>
-
-                        <div className="flex items-center gap-2 pt-6">
-                          <input
-                            id="staffActive"
-                            type="checkbox"
-                            checked={editStaffActive}
-                            onChange={(e) => setEditStaffActive(e.target.checked)}
-                            className="h-4 w-4"
-                          />
-                          <label htmlFor="staffActive" className="text-gray-700">
-                            Staff active
-                          </label>
+                        <div className="rounded border border-gray-200 p-3 bg-gray-50 md:col-span-2">
+                          <div className="text-xs text-gray-500">profile.current_workspace_id</div>
+                          <div className="font-mono text-xs break-all text-slate-900">{String(selectedUser.profile?.current_workspace_id ?? '—')}</div>
                         </div>
                       </div>
 
-                      <div className="text-xs text-gray-500">
-                        Saving uses <span className="font-mono">PATCH /api/admin/users/{'{id}'}</span>.
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Profile */}
-                <div className="rounded-lg border border-gray-200 p-4 md:col-span-2">
-                  <div className="flex items-center justify-between gap-3 mb-3">
-                    <h4 className="text-sm font-bold text-slate-900">Profile (public.user_profiles)</h4>
-                    <button
-                      type="button"
-                      onClick={() => setShowRawProfile((v) => !v)}
-                      className="text-xs px-3 py-1.5 rounded border border-gray-300 text-gray-700 hover:bg-gray-50"
-                    >
-                      {showRawProfile ? 'Hide raw JSON' : 'Show raw JSON'}
-                    </button>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm text-gray-700">
-                    <div className="rounded border border-gray-200 p-3 bg-white">
-                      <div className="text-xs text-gray-500">Profile email</div>
-                      <div className="font-semibold text-slate-900">{selectedUser.profile?.email || '—'}</div>
-                    </div>
-
-                    <div className="rounded border border-gray-200 p-3 bg-white">
-                      <div className="text-xs text-gray-500">Full name</div>
-                      <div className="font-semibold text-slate-900">{selectedUser.profile?.full_name || '—'}</div>
-                    </div>
-
-                    <div className="rounded border border-gray-200 p-3 bg-white">
-                      <div className="text-xs text-gray-500">Current workspace</div>
-                      <div className="font-mono text-xs font-semibold text-slate-900 break-all">
-                        {selectedUser.profile?.current_workspace_id || '—'}
-                      </div>
+                      {showRawProfile && (
+                        <div className="mt-4">
+                          <div className="text-xs font-semibold text-slate-900 mb-2">Raw JSON</div>
+                          <pre className="text-xs bg-slate-900 text-slate-50 rounded p-4 overflow-auto max-h-[420px]">
+                            {JSON.stringify(selectedUser.profile || null, null, 2)}
+                          </pre>
+                        </div>
+                      )}
                     </div>
                   </div>
-
-                  {showRawProfile && (
-                    <pre className="mt-4 text-xs bg-gray-50 border border-gray-200 rounded p-4 overflow-auto max-h-72">
-{JSON.stringify(selectedUser.profile || {}, null, 2)}
-                    </pre>
-                  )}
-                </div>
+                )}
               </div>
 
-              <div className="px-6 pb-6 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setSelectedUser(null)}
-                  className="px-4 py-2 border border-gray-300 rounded bg-white hover:bg-gray-50 text-sm font-semibold"
-                  type="button"
-                >
-                  Close
-                </button>
+              <div className="px-6 pb-6">
+                <div className="text-[11px] text-gray-500">
+                  Admin view only. Billing is workspace-scoped. Protected account: <span className="font-mono">{PROTECTED_EMAIL}</span>
+                </div>
               </div>
             </div>
           </div>

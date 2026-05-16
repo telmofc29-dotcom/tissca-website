@@ -5,6 +5,8 @@
  * Designed to support future authentication and persistence.
  */
 
+import { formatCurrency as _fmtCurrency } from '@/lib/currency';
+
 export interface LineItem {
   id: string;
   description: string;
@@ -142,8 +144,8 @@ export function addDays(date: Date, days: number): Date {
  * FORMATTING
  */
 
-export function formatCurrency(amount: number): string {
-  return `£${amount.toFixed(2)}`;
+export function formatCurrency(amount: number, currencyCode?: string | null): string {
+  return _fmtCurrency(amount, currencyCode);
 }
 
 export function formatDate(dateString: string): string {

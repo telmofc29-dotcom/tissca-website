@@ -7,6 +7,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { Material, MaterialVariant } from '@/types/quotes';
+import { formatCurrency } from '@/lib/currency';
 
 interface MaterialPickerModalProps {
   isOpen: boolean;
@@ -51,15 +52,6 @@ export function MaterialPickerModal({
 
   const getMaterialVariants = (materialId: string) => {
     return variants.filter((v) => v.material_id === materialId);
-  };
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
   };
 
   if (!isOpen) return null;

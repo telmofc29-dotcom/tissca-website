@@ -14,6 +14,17 @@ module.exports = {
         success: '#10b981',
         warning: '#f59e0b',
         error: '#ef4444',
+        gold: {
+          DEFAULT: '#cbb26b',
+          light: '#e0d5a0',
+          dark: '#b89b4a',
+        },
+        navy: {
+          DEFAULT: '#0b141b',
+          light: '#141e2a',
+          dark: '#070b0f',
+          blue: '#2d4152',
+        },
       },
       fontFamily: {
         sans: ['system-ui', 'sans-serif'],

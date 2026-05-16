@@ -22,7 +22,7 @@ export async function POST(req: NextRequest) {
     if (!email) return NextResponse.json({ error: 'Missing email' }, { status: 400 });
 
     const redirectTo = process.env.NEXT_PUBLIC_BASE_URL
-      ? `${process.env.NEXT_PUBLIC_BASE_URL}/auth/verified`
+      ? `${process.env.NEXT_PUBLIC_BASE_URL}/auth/callback`
       : undefined;
 
     const { data, error } = await auth.supabase.auth.admin.inviteUserByEmail(email, {

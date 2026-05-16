@@ -93,6 +93,25 @@ export async function POST(
       );
     }
 
+    // Dedup check: prevent creating duplicate invoices from the same quote
+    const { data: existingInvoice } = await supabase
+      .from('invoices')
+      .select('id, invoice_number')
+      .eq('quote_id', quoteId)
+      .limit(1)
+      .single();
+
+    if (existingInvoice) {
+      return NextResponse.json(
+        {
+          error: `Invoice ${existingInvoice.invoice_number} already exists for this quote.`,
+          existing_invoice_id: existingInvoice.id,
+          existing_invoice_number: existingInvoice.invoice_number,
+        },
+        { status: 409 }
+      );
+    }
+
     // Fetch the acceptance snapshot (immutable source of truth)
     const { data: snapshot, error: snapshotError } = await supabase
       .from('quote_acceptance_snapshot')

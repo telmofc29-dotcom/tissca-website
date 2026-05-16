@@ -7,6 +7,7 @@
 
 import React, { useState } from 'react';
 import { QuoteItem } from '@/types/quotes';
+import { formatCurrency } from '@/lib/currency';
 
 export interface QuoteLineItem extends Partial<QuoteItem> {
   id?: string;
@@ -39,15 +40,6 @@ export function QuoteItemsTable({
 }: QuoteItemsTableProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValues, setEditValues] = useState<Partial<QuoteLineItem>>({});
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-GB', {
-      style: 'currency',
-      currency: 'GBP',
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount);
-  };
 
   const handleEditStart = (item: QuoteLineItem) => {
     setEditingId(item.id || '');

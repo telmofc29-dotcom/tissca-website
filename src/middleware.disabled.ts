@@ -1,17 +1,18 @@
 /**
- * middleware.ts v1.0.1 (Auth Guards + Verification Landing Safe-Path)
+ * middleware.ts v1.0.2 (Auth Guards + Verification Landing Safe-Path)
  * ===================================================================
  * ✅ NOTES (LOCKED):
  * - Keep middleware behaviour the same unless a specific UX/flow requires change.
  * - Protected paths must remain protected.
  * - Public pages must remain accessible without redirects or auth loops.
  *
- * WHY v1.0.1:
- * - Ensure email verification landing page is ALWAYS accessible:
- *   /auth/verified must never be blocked or redirected.
- * - Keep existing behaviour:
- *   - Authenticated users should not access sign-in/sign-up/login/register pages.
- *   - Unauthenticated users should be redirected away from protected routes.
+ * WHY v1.0.2:
+ * - CRITICAL FIX: Protect the member app route group (/app/*).
+ *   User proved unauthenticated access to /app/... was possible.
+ * - Keep existing behaviour unchanged for:
+ *   - /auth/verified always public
+ *   - Authenticated users blocked from /login /register etc
+ *   - Unauthenticated users redirected away from protected routes
  *
  * IMPORTANT:
  * - /auth/verified is a public, hosted page used after Supabase verification.
@@ -20,6 +21,7 @@
  * VERSION HISTORY:
  * - v1.0.0: Initial middleware (as provided)
  * - v1.0.1 (2026-02-04): Add explicit public allow-list for /auth/verified (no behaviour change elsewhere)
+ * - v1.0.2 (2026-03-01): Protect /app/* routes (member app) with same proof-based cookie session gate
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,7 +36,8 @@ export async function middleware(request: NextRequest) {
   const alwaysPublicPaths = ['/auth/verified'];
 
   // Protected paths that require authentication
-  const protectedPaths = ['/dashboard', '/account', '/admin'];
+  // CRITICAL: /app/* is the member application and must be protected.
+  const protectedPaths = ['/app', '/dashboard', '/account', '/admin'];
 
   // Check if path is protected
   const isProtectedPath = protectedPaths.some((path) => pathname.startsWith(path));
@@ -83,7 +86,7 @@ export async function middleware(request: NextRequest) {
     user &&
     (pathname === '/sign-in' ||
       pathname === '/sign-up' ||
-      pathname === '/login' ||
+      pathname === '/sign-in' ||
       pathname === '/register')
   ) {
     console.log(
@@ -97,7 +100,7 @@ export async function middleware(request: NextRequest) {
     console.log(
       `[Middleware] Unauthenticated user tried to access protected route: ${pathname}, redirecting to /login`
     );
-    return NextResponse.redirect(new URL('/login', request.url));
+    return NextResponse.redirect(new URL('/sign-in', request.url));
   }
 
   // Return response with updated cookies

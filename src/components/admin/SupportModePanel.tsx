@@ -11,7 +11,7 @@
 
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 
 const MEMBER_SIMULATOR_ROUTE = '/dashboard/app';
@@ -26,7 +26,7 @@ export default function SupportModePanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>('');
 
-  const isActive = useMemo(() => Boolean(currentWorkspaceId), [currentWorkspaceId]);
+  const [isActive, setIsActive] = useState(Boolean(currentWorkspaceId));
 
   const enterSupportMode = async () => {
     setError('');
@@ -46,8 +46,8 @@ export default function SupportModePanel({
       }
 
       // Open the member simulator (real member dashboard route)
+      setIsActive(true);
       router.push(MEMBER_SIMULATOR_ROUTE);
-      router.refresh();
     } catch (e: any) {
       setError(e?.message || 'Failed to enter support mode');
     } finally {
@@ -71,9 +71,9 @@ export default function SupportModePanel({
         throw new Error(txt || `Failed with status ${res.status}`);
       }
 
-      // Clear local input and refresh server-rendered admin page state
+      // Clear local input and mark inactive
       setWorkspaceId('');
-      router.refresh();
+      setIsActive(false);
     } catch (e: any) {
       setError(e?.message || 'Failed to exit support mode');
     } finally {
@@ -137,7 +137,6 @@ export default function SupportModePanel({
             <button
               onClick={() => {
                 router.push(MEMBER_SIMULATOR_ROUTE);
-                router.refresh();
               }}
               className="ml-auto rounded-md bg-white px-4 py-2 text-sm font-semibold text-amber-900 border border-amber-200 hover:bg-amber-100"
             >
