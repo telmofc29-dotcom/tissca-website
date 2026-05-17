@@ -25,6 +25,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { resolveUserFromToken } from '@/lib/workspace-data';
+import { sanitiseSupabaseError } from '@/lib/sync-diagnostics/sanitise-error';
 
 const MAX_ROWS = 100;
 
@@ -304,7 +305,7 @@ export async function GET(req: NextRequest) {
       if (!allowed.has(tableParam)) {
         return NextResponse.json({ error: 'Unsupported table' }, { status: 400 });
       }
-      const scopeCol = tableParam === 'clients' ? 'business_id' : 'workspace_id';
+      const scopeCol = 'workspace_id'; // all tables including clients use workspace_id in live schema
       try {
         const { data, error } = await supabase
           .from(tableParam)
@@ -373,12 +374,10 @@ function ok(body: unknown) {
   return NextResponse.json(body, { headers: { 'Cache-Control': 'no-store' } });
 }
 
-// Strips anything that looks like a token / key / email / long opaque string.
+// Delegates to the shared structured stringifier so PostgREST/Supabase
+// error objects ({ message, code, hint, details }) render correctly instead
+// of collapsing to "[object Object]". Redaction rules are applied inside
+// the shared helper.
 function sanitiseErr(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e);
-  return raw
-    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED_JWT]')
-    .replace(/sbp_[A-Za-z0-9]+/g, '[REDACTED_SUPABASE_KEY]')
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]')
-    .slice(0, 500);
+  return sanitiseSupabaseError(e);
 }

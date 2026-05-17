@@ -30,10 +30,12 @@ import {
 
 type Lead = {
   id: string;
-  name: string | null;
+  client_name: string | null; // primary Android name field (client_name in LeadRow)
+  name: string | null;        // legacy/website-created name alias
   status: string;
   source: string | null;
   value_estimate: number | null;
+  estimated_value: number | null; // Android field name
   follow_up_date: string | null;
   notes: string | null;
   client_id: string | null;
@@ -280,7 +282,7 @@ export default function AppLeadsPage() {
     setEditingLead(lead);
     const client = lead.client_id ? clientsMap.get(lead.client_id) : null;
     setFormData({
-      name: lead.name || '',
+      name: lead.client_name || lead.name || '',
       status: lead.status,
       source: lead.source || '',
       value_estimate: lead.value_estimate != null ? String(lead.value_estimate) : '',
@@ -335,7 +337,7 @@ export default function AppLeadsPage() {
   // ─── Delete ──────────────────────────────────────────────────────────────
 
   async function handleDelete(lead: Lead) {
-    if (!confirm(`Delete "${lead.name || 'this lead'}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${lead.client_name || lead.name || 'this lead'}"? This cannot be undone.`)) return;
     try {
       const res = await fetch('/api/workspace/leads', {
         method: 'DELETE',
@@ -356,7 +358,7 @@ export default function AppLeadsPage() {
   // ─── Convert to Job ────────────────────────────────────────────────────────
 
   async function handleConvertToJob(lead: Lead) {
-    if (!confirm(`Convert "${lead.name || 'this lead'}" to a job? The lead will be marked as Won.`)) return;
+    if (!confirm(`Convert "${lead.client_name || lead.name || 'this lead'}" to a job? The lead will be marked as Won.`)) return;
     setConverting(true);
     try {
       // Phase G1: Use dedicated conversion endpoint that handles:
@@ -655,7 +657,7 @@ export default function AppLeadsPage() {
                 >
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-900">{lead.name || 'Untitled lead'}</p>
+                      <p className="font-semibold text-slate-900">{lead.client_name || lead.name || 'Unnamed lead'}</p>
                       <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${statusPillClasses(lead.status)}`}>
                         {lead.status}
                       </span>

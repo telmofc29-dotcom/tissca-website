@@ -23,7 +23,8 @@ import { trackEvent } from '@/utils/analytics';
 
 type Job = {
   id: string;
-  title: string | null;
+  client_name: string | null; // Android primary name field
+  title: string | null;       // legacy/website-created alias
   lead_id: string | null;
   client_id: string | null;
   status: string;
@@ -46,7 +47,8 @@ type Job = {
 
 type Lead = {
   id: string;
-  name: string | null;
+  client_name: string | null; // Android primary name field
+  name: string | null;        // legacy/website-created alias
   status: string;
 };
 
@@ -231,7 +233,7 @@ export default function AppJobsPage() {
   function openEditPanel(job: Job) {
     setEditingJob(job);
     setFormData({
-      title: job.title || '',
+      title: job.client_name || job.title || '',
       status: job.status,
       lead_id: job.lead_id || '',
       scheduled_date: formatDateInput(job.scheduled_date),
@@ -281,7 +283,7 @@ export default function AppJobsPage() {
   // ─── Delete ──────────────────────────────────────────────────────────────
 
   async function handleDelete(job: Job) {
-    if (!confirm(`Delete "${job.title || 'this job'}"? This cannot be undone.`)) return;
+    if (!confirm(`Delete "${job.client_name || job.title || 'this job'}"? This cannot be undone.`)) return;
     try {
       const res = await fetch('/api/workspace/jobs', {
         method: 'DELETE',
@@ -338,7 +340,7 @@ export default function AppJobsPage() {
   function leadNameForId(leadId: string | null) {
     if (!leadId) return null;
     const lead = leads.find((l) => l.id === leadId);
-    return lead?.name || null;
+    return lead?.client_name || lead?.name || null;
   }
 
   // Won leads that could be converted to jobs
@@ -388,7 +390,7 @@ export default function AppJobsPage() {
             >
               <option value="">No linked lead</option>
               {leads.map((l) => (
-                <option key={l.id} value={l.id}>{l.name || 'Untitled lead'}</option>
+                <option key={l.id} value={l.id}>{l.client_name || l.name || 'Unnamed lead'}</option>
               ))}
             </select>
           </div>
@@ -559,7 +561,7 @@ export default function AppJobsPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-semibold text-slate-900">{job.title || 'Untitled job'}</p>
+                        <p className="font-semibold text-slate-900">{job.client_name || job.title || 'Unnamed job'}</p>
                         <span className={`inline-flex items-center rounded-full border px-2 py-0.5 text-xs font-semibold ${statusBadgeClasses(job.status)}`}>
                           {job.status.replace('_', ' ')}
                         </span>
@@ -706,14 +708,14 @@ export default function AppJobsPage() {
                     <button
                       key={lead.id}
                       onClick={() => {
-                        setFormData({ ...EMPTY_FORM, title: lead.name || '', lead_id: lead.id });
+                        setFormData({ ...EMPTY_FORM, title: lead.client_name || lead.name || '', lead_id: lead.id });
                         setFormError(null);
                         setEditingJob(null);
                         setShowCreatePanel(true);
                       }}
                       className="block w-full rounded-lg border border-emerald-200/60 bg-white px-3 py-2 text-left text-sm font-medium text-emerald-900 hover:bg-emerald-50 transition-colors"
                     >
-                      {lead.name || 'Untitled lead'} →
+                      {lead.client_name || lead.name || 'Unnamed lead'} →
                     </button>
                   ))}
                 </div>

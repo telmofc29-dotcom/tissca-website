@@ -1,4 +1,4 @@
-// src/app/(member)/app/invoices/page.tsx v2.0
+// src/app/(member)/app/invoices/page.tsx v3.0
 //
 // PURPOSE:
 // - Display invoice documents from public.documents via /api/workspace/documents.
@@ -9,6 +9,8 @@
 // - v1.0: Initial placeholder UI (dark/glass).
 // - v1.1 (2026-03-01): Light theme + improved layout/UX.
 // - v2.0 (2026-03-27): Wire to real /api/workspace/documents data.
+// - v3.0 (2026-05-17): Fix paid count — cross-reference invoices table via stats
+//                      API; add View PDF links; add linked_entity support.
 
 'use client';
 
@@ -29,6 +31,9 @@ type Document = {
   grand_total: number | null;
   currency: string | null;
   status: string | null;
+  linked_entity_type: string | null;
+  linked_entity_id: string | null;
+  platform: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -38,6 +43,7 @@ function statusBadgeClasses(status: string | null) {
   if (raw === 'paid') return 'border-emerald-200 bg-emerald-50 text-emerald-700';
   if (raw === 'overdue') return 'border-red-200 bg-red-50 text-red-700';
   if (raw === 'sent') return 'border-blue-200 bg-blue-50 text-blue-700';
+  if (raw === 'partially_paid') return 'border-amber-200 bg-amber-50 text-amber-700';
   return 'border-gray-200 bg-gray-50 text-slate-700';
 }
 
@@ -54,30 +60,41 @@ export default function AppInvoicesPage() {
   const [docs, setDocs] = useState<Document[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Accurate paid count from the invoices table (via stats API).
+  // documents.status may not be updated by Android when marking paid.
+  const [invoicesPaid, setInvoicesPaid] = useState<number | null>(null);
 
   useEffect(() => {
     if (ctxLoading || !accessToken) return;
 
     setLoading(true);
-    fetch('/api/workspace/documents', {
-      headers: { Authorization: `Bearer ${accessToken}` },
-      cache: 'no-store',
-    })
-      .then((res) => {
-        if (!res.ok) throw new Error('Failed to load documents');
-        return res.json();
-      })
-      .then((data) => {
-        const all = (data.documents ?? []) as Document[];
+    const headers = { Authorization: `Bearer ${accessToken}` };
+
+    Promise.all([
+      fetch('/api/workspace/documents', { headers, cache: 'no-store' }),
+      fetch('/api/workspace/stats', { headers, cache: 'no-store' }),
+    ])
+      .then(async ([docsRes, statsRes]) => {
+        if (!docsRes.ok) throw new Error('Failed to load documents');
+        const docsData = await docsRes.json();
+        const all = (docsData.documents ?? []) as Document[];
         const invoices = all.filter((d) => {
           const t = String(d.type || '').toLowerCase();
           return t.includes('invoice') || t.includes('receipt') || t.includes('payment');
         });
         setDocs(invoices);
+
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          // Use the invoices table paid count — more reliable than documents.status
+          const paid: number = statsData?.invoices?.paid ?? null;
+          setInvoicesPaid(paid);
+        }
+
         setError(null);
         trackEvent('feature_view', '/app/invoices', { eventLabel: 'invoices_loaded', metadata: { feature: 'invoices', entityType: 'invoice', action: 'view', itemCount: invoices.length, sourcePage: '/app/invoices' } });
       })
-      .catch((err) => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load invoices'))
       .finally(() => setLoading(false));
   }, [accessToken, ctxLoading]);
 
@@ -85,9 +102,11 @@ export default function AppInvoicesPage() {
 
   const counts = useMemo(() => {
     const total = docs.length;
-    const paid = docs.filter((d) => String(d.status || '').toLowerCase() === 'paid').length;
+    // Doc-level paid (status field): may be stale for Android-created docs.
+    // invoicesPaid (from stats/invoices table) is the authoritative paid count.
+    const docPaid = docs.filter((d) => String(d.status || '').toLowerCase() === 'paid').length;
     const sent = docs.filter((d) => String(d.status || '').toLowerCase() === 'sent').length;
-    return { total, paid, sent };
+    return { total, docPaid, sent };
   }, [docs]);
 
   return (
@@ -119,8 +138,13 @@ export default function AppInvoicesPage() {
           <article className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_16px_40px_-34px_rgba(0,0,0,0.22)]">
             <p className="text-sm text-slate-600">Paid</p>
             <p className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
-              {isLoading ? '\u2014' : counts.paid}
+              {isLoading ? '\u2014' : (invoicesPaid !== null ? invoicesPaid : counts.docPaid)}
             </p>
+            {!isLoading && invoicesPaid !== null && invoicesPaid !== counts.docPaid && (
+              <p className="mt-0.5 text-[10px] text-slate-400">
+                From invoices table · {counts.docPaid} doc{counts.docPaid !== 1 ? 's' : ''} show paid
+              </p>
+            )}
           </article>
         </div>
 
@@ -140,36 +164,54 @@ export default function AppInvoicesPage() {
               No invoice documents yet. Invoices you create will appear here.
             </div>
           ) : (
-            docs.map((doc) => (
-              <article
-                key={doc.id}
-                className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_16px_40px_-34px_rgba(0,0,0,0.22)]"
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="font-semibold text-slate-900">{doc.reference || doc.client_name || 'Untitled invoice'}</p>
-                      <span
-                        className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses(doc.status)}`}
-                      >
-                        {doc.status || 'Draft'}
-                      </span>
-                    </div>
-                    {doc.client_name && doc.reference && (
-                      <p className="mt-0.5 text-sm text-slate-600">{doc.client_name}</p>
-                    )}
-                    <p className="mt-1 text-sm text-slate-600">
-                      {formatDate(doc.date || doc.created_at)}
-                      {doc.grand_total != null && (
-                        <span className="ml-2 font-semibold text-slate-900">
-                          {_fmtCur(doc.grand_total, doc.currency)}
+            docs.map((doc) => {
+              const pdfHref = doc.linked_entity_type === 'invoice' && doc.linked_entity_id
+                ? `/api/invoices/${doc.linked_entity_id}/pdf`
+                : doc.linked_entity_type === 'quote' && doc.linked_entity_id
+                ? `/api/quotes/${doc.linked_entity_id}/pdf`
+                : `/api/workspace/documents/${doc.id}/pdf`;
+
+              return (
+                <article
+                  key={doc.id}
+                  className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_16px_40px_-34px_rgba(0,0,0,0.22)]"
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="font-semibold text-slate-900">{doc.reference || doc.client_name || 'Untitled invoice'}</p>
+                        <span
+                          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${statusBadgeClasses(doc.status)}`}
+                        >
+                          {doc.status ? (doc.status.charAt(0).toUpperCase() + doc.status.slice(1).toLowerCase()) : 'Draft'}
                         </span>
+                      </div>
+                      {doc.client_name && doc.reference && (
+                        <p className="mt-0.5 text-sm text-slate-600">{doc.client_name}</p>
                       )}
-                    </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {formatDate(doc.date || doc.created_at)}
+                        {doc.grand_total != null && (
+                          <span className="ml-2 font-semibold text-slate-900">
+                            {_fmtCur(doc.grand_total, doc.currency)}
+                          </span>
+                        )}
+                      </p>
+                    </div>
+
+                    {/* PDF action */}
+                    <a
+                      href={pdfHref}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-gray-100 transition-colors"
+                    >
+                      View PDF
+                    </a>
                   </div>
-                </div>
-              </article>
-            ))
+                </article>
+              );
+            })
           )}
         </div>
 

@@ -1,17 +1,18 @@
-// src/app/(member)/app/quotes/page.tsx v3.0
+// src/app/(member)/app/quotes/page.tsx v4.0
 //
 // PURPOSE:
 // - Display quote documents from public.documents via /api/workspace/documents.
 // - Android-created quotes are synced to public.documents (type = 'quote'),
 //   NOT to public.quotes (which is the website-native quote table).
-// - Dark theme (espresso + warm glow) matching dashboard styling.
-// - Status filtering, action buttons (mark sent, accept, reject, reopen).
+// - Light theme matching other member app pages (invoices, overview, settings).
+// - Status filtering, PDF view links, clean card layout.
 //
 // VERSION HISTORY:
 // - v1.0: Initial placeholder UI (dark/glass).
 // - v1.1 (2026-03-01): Light theme + improved readability.
 // - v2.0 (2026-03-27): Wire to real /api/workspace/documents data.
 // - v3.0: Dark theme, status filters, action buttons, enhanced cards.
+// - v4.0 (2026-05-17): Light theme parity; PDF view links; linked_entity support.
 
 'use client';
 
@@ -33,6 +34,9 @@ type Document = {
   grand_total: number | null;
   currency: string | null;
   status: string | null;
+  linked_entity_type: string | null;
+  linked_entity_id: string | null;
+  platform: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -40,12 +44,12 @@ type Document = {
 type StatusFilter = 'all' | 'draft' | 'sent' | 'accepted' | 'rejected';
 
 const STATUS_STYLES: Record<string, string> = {
-  draft: 'bg-slate-500/20 text-slate-300 border-slate-500/30',
-  sent: 'bg-blue-500/20 text-blue-300 border-blue-500/30',
-  accepted: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  approved: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30',
-  rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
-  declined: 'bg-red-500/20 text-red-300 border-red-500/30',
+  draft: 'border-gray-200 bg-gray-50 text-slate-600',
+  sent: 'border-blue-200 bg-blue-50 text-blue-700',
+  accepted: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  approved: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  rejected: 'border-red-200 bg-red-50 text-red-700',
+  declined: 'border-red-200 bg-red-50 text-red-700',
 };
 
 function normalizeStatus(status: string | null): string {
@@ -109,130 +113,126 @@ export default function AppQuotesPage() {
 
   const statusCount = (s: string) => docs.filter((d) => normalizeStatus(d.status) === s).length;
 
-  const filters: { label: string; value: StatusFilter }[] = [
-    { label: 'All', value: 'all' },
-    { label: 'Draft', value: 'draft' },
-    { label: 'Sent', value: 'sent' },
-    { label: 'Accepted', value: 'accepted' },
-    { label: 'Rejected', value: 'rejected' },
-  ];
-
   return (
-    <main className="min-h-screen text-slate-100">
+    <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold">Quotes</h1>
-          <p className="text-sm text-slate-400 mt-0.5">{docs.length} quote{docs.length !== 1 ? 's' : ''} in your workspace</p>
-        </div>
-        <Link
-          href="/app/scan-to-layout"
-          className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400 transition-colors shadow-lg shadow-amber-500/20"
-        >
-          + New Quote
-        </Link>
-      </div>
-
-      {/* Filters */}
-      <div className="flex gap-2 flex-wrap mb-5">
-        {filters.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={`rounded-full px-4 py-1.5 text-xs font-medium transition-colors ${
-              filter === f.value
-                ? 'bg-amber-500/30 text-amber-200 border border-amber-500/40'
-                : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'
-            }`}
+      <section className="rounded-2xl border border-gray-200 bg-white p-5 shadow-[0_18px_50px_-35px_rgba(0,0,0,0.28)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900">Quotes</h2>
+            <p className="mt-1 text-sm text-slate-600">
+              Quote documents for your workspace — created on Android or web.
+            </p>
+          </div>
+          <Link
+            href="/app/scan-to-layout"
+            className="rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-amber-400 transition-colors"
           >
-            {f.label}
-            {f.value !== 'all' && (
-              <span className="ml-1.5 opacity-60">{statusCount(f.value)}</span>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300 mb-4">
-          {error}
+            + New Quote
+          </Link>
         </div>
-      )}
+
+        {/* Summary counts */}
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          {(['all', 'draft', 'sent', 'accepted'] as StatusFilter[]).map((f) => (
+            <button
+              key={f}
+              onClick={() => setFilter(f)}
+              className={`rounded-xl border px-4 py-3 text-left transition-all ${
+                filter === f
+                  ? 'border-amber-300 bg-amber-50 shadow-sm'
+                  : 'border-gray-200 bg-white hover:border-gray-300'
+              }`}
+            >
+              <p className="text-xs font-medium text-slate-500 capitalize">{f === 'all' ? 'All quotes' : f}</p>
+              <p className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">
+                {isLoading ? '—' : (f === 'all' ? docs.length : statusCount(f))}
+              </p>
+            </button>
+          ))}
+        </div>
+
+        {error && (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {error}
+          </div>
+        )}
+      </section>
 
       {/* Quote list */}
-      {isLoading ? (
-        <div className="text-center py-20 text-slate-500">Loading quotes…</div>
-      ) : filtered.length === 0 ? (
-        <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
-          <p className="text-slate-400 text-sm">No quotes found.</p>
-          <p className="text-slate-500 text-xs mt-1">Create your first quote to get started.</p>
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {filtered.map((doc) => {
+      <section className="space-y-3">
+        {isLoading ? (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-slate-400">
+            Loading quotes&hellip;
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-300 bg-gray-50 px-4 py-6 text-center text-sm text-slate-600">
+            No quotes found. Create your first quote to get started.
+          </div>
+        ) : (
+          filtered.map((doc) => {
             const status = normalizeStatus(doc.status);
             const styles = STATUS_STYLES[status] || STATUS_STYLES.draft;
+            const pdfHref = doc.linked_entity_type === 'quote' && doc.linked_entity_id
+              ? `/api/quotes/${doc.linked_entity_id}/pdf`
+              : doc.linked_entity_type === 'invoice' && doc.linked_entity_id
+              ? `/api/invoices/${doc.linked_entity_id}/pdf`
+              : `/api/workspace/documents/${doc.id}/pdf`;
 
             return (
-              <div
+              <article
                 key={doc.id}
-                className="rounded-2xl border border-white/10 bg-white/[0.03] backdrop-blur p-4 hover:bg-white/[0.06] transition-colors shadow-[0_20px_60px_-30px_rgba(0,0,0,0.85)]"
+                className="rounded-2xl border border-gray-200 bg-white px-4 py-4 shadow-[0_16px_40px_-34px_rgba(0,0,0,0.22)]"
               >
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-semibold text-sm text-slate-100">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="font-semibold text-slate-900">
                         {doc.reference || doc.client_name || 'Untitled quote'}
-                      </span>
-                      <span className={`rounded-full border px-2 py-0.5 text-[10px] font-medium uppercase tracking-wider ${styles}`}>
-                        {status}
+                      </p>
+                      <span className={`inline-flex items-center rounded-full border px-2.5 py-1 text-xs font-semibold ${styles}`}>
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
                       </span>
                     </div>
                     {doc.client_name && doc.reference && (
-                      <p className="text-[11px] text-slate-400 mt-0.5">{doc.client_name}</p>
+                      <p className="mt-0.5 text-sm text-slate-600">{doc.client_name}</p>
                     )}
-                    <p className="text-[11px] text-slate-500 mt-1">
-                      Created {formatDate(doc.date || doc.created_at)}
-                      {doc.updated_at !== doc.created_at && ` · Updated ${formatDate(doc.updated_at)}`}
+                    <p className="mt-1 text-sm text-slate-500">
+                      {formatDate(doc.date || doc.created_at)}
                       {doc.grand_total != null && (
-                        <span className="ml-2 text-slate-300 font-medium">
+                        <span className="ml-2 font-semibold text-slate-900">
                           {_fmtCur(doc.grand_total, doc.currency)}
                         </span>
                       )}
                     </p>
                   </div>
+
+                  {/* PDF action */}
+                  <a
+                    href={pdfHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-gray-100 transition-colors"
+                  >
+                    View PDF
+                  </a>
                 </div>
 
-                {/* Actions */}
-                <div className="flex gap-2 mt-3 flex-wrap">
-                  {status === 'draft' && (
-                    <span className="rounded-lg bg-amber-500/10 border border-amber-500/20 px-3 py-1 text-[10px] font-medium text-amber-300/70">
-                      Ready to send
-                    </span>
-                  )}
-                  {status === 'sent' && (
-                    <span className="rounded-lg bg-blue-500/10 border border-blue-500/20 px-3 py-1 text-[10px] font-medium text-blue-300/70">
-                      Awaiting response
-                    </span>
-                  )}
-                  {status === 'accepted' && (
-                    <span className="rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-3 py-1 text-[10px] font-medium text-emerald-300/70">
-                      ✓ Job won
-                    </span>
-                  )}
-                </div>
-              </div>
+                {/* Status hint */}
+                {(status === 'accepted' || status === 'approved') && (
+                  <p className="mt-2 text-xs font-medium text-emerald-700">✓ Quote accepted</p>
+                )}
+              </article>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
 
-      {!isLoading && docs.length > 0 && (
-        <p className="mt-4 text-xs text-slate-600 text-center">
-          Showing {filtered.length} of {docs.length} quote{docs.length !== 1 ? 's' : ''}.
-        </p>
-      )}
-    </main>
+        {!isLoading && docs.length > 0 && (
+          <p className="text-xs text-slate-500 text-center">
+            Showing {filtered.length} of {docs.length} quote{docs.length !== 1 ? 's' : ''}.
+          </p>
+        )}
+      </section>
+    </div>
   );
 }

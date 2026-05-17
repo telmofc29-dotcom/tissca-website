@@ -121,8 +121,8 @@ export async function GET(req: NextRequest) {
       countRowsScoped(supabase, 'documents', workspaceId),
       countRowsScoped(supabase, 'tool_attachments', workspaceId),
       countRowsScoped(supabase, 'payment_requests', workspaceId),
-      // clients table is scoped by business_id in legacy schema
-      countRowsScoped(supabase, 'clients', workspaceId, 'business_id'),
+      // clients table uses workspace_id (live schema, same as all other tables)
+      countRowsScoped(supabase, 'clients', workspaceId),
     ]);
 
     if (leads.failed)    failed.push('leads');

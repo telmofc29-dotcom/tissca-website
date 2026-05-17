@@ -17,6 +17,7 @@ export const dynamic = 'force-dynamic';
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { resolveUserFromToken } from '@/lib/workspace-data';
+import { sanitiseSupabaseError } from '@/lib/sync-diagnostics/sanitise-error';
 import {
   classifyAttachmentMismatch,
   classifyOrphanAttachment,
@@ -43,14 +44,12 @@ function sortCandidates(candidates: RecoveryCandidate[]): RecoveryCandidate[] {
   );
 }
 
-// Strips JWT / key / email patterns from any error surfaced as a note.
+// Delegates to the shared structured stringifier so PostgREST/Supabase
+// error objects ({ message, code, hint, details }) render correctly instead
+// of collapsing to "[object Object]". Redaction rules are applied inside
+// the shared helper.
 function sanitiseErr(e: unknown): string {
-  const raw = e instanceof Error ? e.message : String(e);
-  return raw
-    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[REDACTED_JWT]')
-    .replace(/sbp_[A-Za-z0-9]+/g, '[REDACTED_KEY]')
-    .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[REDACTED_EMAIL]')
-    .slice(0, 400);
+  return sanitiseSupabaseError(e);
 }
 
 export async function GET(req: NextRequest) {
