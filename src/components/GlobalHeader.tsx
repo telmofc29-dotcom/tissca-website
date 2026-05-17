@@ -373,7 +373,7 @@ export function GlobalHeader({
 
               <div className="px-2 pb-2">
                 <Link
-                  href="/dashboard"
+                  href="/app/overview"
                   onClick={closeMenu}
                   className="block rounded-xl px-3 py-2.5 text-sm font-medium text-white/85 hover:text-white hover:bg-white/5 no-underline hover:no-underline"
                   role="menuitem"

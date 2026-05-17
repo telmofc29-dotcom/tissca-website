@@ -1,4 +1,4 @@
-// src/app/api/workspace/documents/[id]/pdf/route.ts v1.0
+// src/app/api/workspace/documents/[id]/pdf/route.ts v1.1
 //
 // GET /api/workspace/documents/:id/pdf
 //
@@ -7,8 +7,15 @@
 // This handles Android-created quotes/invoices that live in documents
 // (not in the website-native quotes/invoices tables).
 //
-// AUTHENTICATION: Bearer token → resolveUserFromToken
+// AUTHENTICATION: Bearer token via Authorization header OR ?token= query param.
+//   Query param is accepted so browser <a href target="_blank"> links work correctly
+//   without needing custom fetch() calls. This is safe for PDFs (HTTPS-only, short-lived token).
 // AUTHORISATION:  Document must belong to the resolved workspace.
+//
+// VERSION HISTORY:
+// - v1.0: Initial implementation — header-only auth.
+// - v1.1 (2026-05-17): Accept token from ?token= query param so direct browser
+//   links from quotes/invoices pages can open the PDF in a new tab (Part A fix).
 
 export const dynamic = 'force-dynamic';
 
@@ -40,14 +47,27 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
 ) {
-  const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+  // Accept token from Authorization header OR ?token= query param.
+  // The query param path is required so that <a href target="_blank"> links work —
+  // browser navigation requests cannot set custom headers.
+  const token =
+    req.headers.get('Authorization')?.replace('Bearer ', '') ||
+    req.nextUrl.searchParams.get('token') ||
+    '';
+
   if (!token) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return new NextResponse(
+      '<html><body style="font-family:sans-serif;padding:2rem"><h2>PDF Error — Unauthorised</h2><p>No auth token. Please reload the member app and try again.</p></body></html>',
+      { status: 401, headers: { 'Content-Type': 'text/html' } },
+    );
   }
 
   const resolved = await resolveUserFromToken(token);
   if (!resolved) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return new NextResponse(
+      '<html><body style="font-family:sans-serif;padding:2rem"><h2>PDF Error — Unauthorised</h2><p>Session expired or invalid token. Please sign in again.</p></body></html>',
+      { status: 401, headers: { 'Content-Type': 'text/html' } },
+    );
   }
 
   const supabase = createServerSupabaseClient();
@@ -58,13 +78,19 @@ export async function GET(
     .maybeSingle<DocumentRow>();
 
   if (docErr || !doc) {
-    return NextResponse.json({ error: 'Document not found' }, { status: 404 });
+    return new NextResponse(
+      '<html><body style="font-family:sans-serif;padding:2rem"><h2>PDF Error — Document not found</h2><p>This document does not exist or was deleted.</p></body></html>',
+      { status: 404, headers: { 'Content-Type': 'text/html' } },
+    );
   }
 
   // Authorise: document must belong to this workspace
   const workspaceId = resolved.workspaceId ?? resolved.businessId;
   if (doc.workspace_id !== workspaceId) {
-    return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    return new NextResponse(
+      '<html><body style="font-family:sans-serif;padding:2rem"><h2>PDF Error — Forbidden</h2><p>You do not have access to this document.</p></body></html>',
+      { status: 403, headers: { 'Content-Type': 'text/html' } },
+    );
   }
 
   // Load PDF identity (branding) for this workspace

@@ -415,8 +415,8 @@ export function AuthNav({
           {/* ADMIN-SEALED: when inside /admin, do NOT show member/public links */}
           {!isAdminPath && (
             <>
-              <Link href="/dashboard" className={itemCls} onClick={onNavigate} role="menuitem">
-                Dashboard
+              <Link href="/app/overview" className={itemCls} onClick={onNavigate} role="menuitem">
+                Overview
               </Link>
               <Link href="/account" className={itemCls} onClick={onNavigate} role="menuitem">
                 Account
@@ -595,12 +595,12 @@ export function AuthNav({
             {!isAdminPath && (
               <>
                 <Link
-                  href="/dashboard"
+                  href="/app/overview"
                   className="px-4 py-3 text-sm text-gray-700 hover:bg-gray-50 transition-colors no-underline"
                   role="menuitem"
                   onClick={closeDropdownAndNavigate}
                 >
-                  Dashboard
+                  Overview
                 </Link>
                 <Link
                   href="/account"

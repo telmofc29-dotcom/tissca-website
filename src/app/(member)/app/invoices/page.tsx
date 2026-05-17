@@ -1,4 +1,4 @@
-// src/app/(member)/app/invoices/page.tsx v3.0
+// src/app/(member)/app/invoices/page.tsx v3.1
 //
 // PURPOSE:
 // - Display invoice documents from public.documents via /api/workspace/documents.
@@ -11,6 +11,8 @@
 // - v2.0 (2026-03-27): Wire to real /api/workspace/documents data.
 // - v3.0 (2026-05-17): Fix paid count — cross-reference invoices table via stats
 //                      API; add View PDF links; add linked_entity support.
+// - v3.1 (2026-05-17): Fix PDF button — embed auth token in URL so browser direct
+//   link works. Always use /api/workspace/documents/:id/pdf for all documents.
 
 'use client';
 
@@ -63,6 +65,40 @@ export default function AppInvoicesPage() {
   // Accurate paid count from the invoices table (via stats API).
   // documents.status may not be updated by Android when marking paid.
   const [invoicesPaid, setInvoicesPaid] = useState<number | null>(null);
+  // Track which doc id is currently fetching its PDF (auth-gated blob open)
+  const [pdfLoading, setPdfLoading] = useState<string | null>(null);
+
+  async function openPdf(docId: string, pdfHref: string) {
+    if (pdfLoading || !accessToken) return;
+    setPdfLoading(docId);
+    try {
+      const res = await fetch(pdfHref, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try { const j = await res.json(); msg = (j as { error?: string }).error || msg; } catch { /* noop */ }
+        throw new Error(msg);
+      }
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const w = window.open(blobUrl, '_blank', 'noopener,noreferrer');
+      if (!w) {
+        // Popup blocked — trigger a download instead
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = `invoice-${docId}.pdf`;
+        a.click();
+      }
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Unknown error';
+      // eslint-disable-next-line no-alert
+      alert(`Could not open PDF: ${msg}`);
+    } finally {
+      setPdfLoading(null);
+    }
+  }
 
   useEffect(() => {
     if (ctxLoading || !accessToken) return;
@@ -165,11 +201,10 @@ export default function AppInvoicesPage() {
             </div>
           ) : (
             docs.map((doc) => {
-              const pdfHref = doc.linked_entity_type === 'invoice' && doc.linked_entity_id
-                ? `/api/invoices/${doc.linked_entity_id}/pdf`
-                : doc.linked_entity_type === 'quote' && doc.linked_entity_id
-                ? `/api/quotes/${doc.linked_entity_id}/pdf`
-                : `/api/workspace/documents/${doc.id}/pdf`;
+              // PART A FIX: Always use the workspace documents PDF route with token in URL.
+              // Android-created documents live in public.documents (not public.invoices).
+              // The token must be a query param — browser <a target="_blank"> links cannot set headers.
+              const pdfHref = `/api/workspace/documents/${doc.id}/pdf?token=${encodeURIComponent(accessToken ?? '')}`;
 
               return (
                 <article
@@ -199,15 +234,15 @@ export default function AppInvoicesPage() {
                       </p>
                     </div>
 
-                    {/* PDF action */}
-                    <a
-                      href={pdfHref}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-gray-100 transition-colors"
+                    {/* PDF action — uses fetch with Authorization header (anchor tags lack it) */}
+                    <button
+                      type="button"
+                      onClick={() => openPdf(doc.id, pdfHref)}
+                      disabled={pdfLoading === doc.id}
+                      className="shrink-0 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-slate-700 hover:bg-gray-100 transition-colors disabled:opacity-60"
                     >
-                      View PDF
-                    </a>
+                      {pdfLoading === doc.id ? 'Opening…' : 'View PDF'}
+                    </button>
                   </div>
                 </article>
               );

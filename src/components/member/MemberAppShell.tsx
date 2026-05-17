@@ -212,10 +212,10 @@ export default function MemberAppShell({ children }: MemberAppShellProps) {
                 <div className="absolute right-0 z-20 mt-2 w-52 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-[0_26px_90px_rgba(15,23,42,0.18)]">
                   <div className="p-2">
                     <Link
-                      href="/dashboard"
+                      href="/app/overview"
                       className="block rounded-xl px-3 py-2 text-sm text-slate-700 hover:bg-gray-50"
                     >
-                      Dashboard
+                      Overview
                     </Link>
                     <Link
                       href="/app/settings"

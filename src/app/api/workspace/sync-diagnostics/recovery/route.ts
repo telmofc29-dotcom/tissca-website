@@ -306,6 +306,73 @@ export async function GET(req: NextRequest) {
       notes.push(`legacy_workspace_id detection threw: ${sanitiseErr(e)}`);
     }
 
+    // ── 4. WON leads with no corresponding server-side job ─────────────────
+    // Detects the pattern: Android converted a lead to a job locally, updated
+    // the lead status to WON on the server, but the job row was never synced
+    // to Supabase (local-only on Android). The lead stays visible on the
+    // website while the job is invisible — a server-truth divergence.
+    //
+    // SAFE: read-only. Does not alter any rows.
+    try {
+      const { data: wonLeads, error: wonErr } = await supabase
+        .from('leads')
+        .select('id, client_name, status, created_at')
+        .eq('workspace_id', workspaceId)
+        .in('status', ['WON', 'won'])
+        .order('created_at', { ascending: false })
+        .limit(MAX_QUERY_ROWS);
+
+      if (wonErr) notes.push(`won_leads query failed: ${sanitiseErr(wonErr)}`);
+
+      if (wonLeads && wonLeads.length > 0) {
+        const wonLeadIds = wonLeads.map((l) => l.id as string);
+
+        // Find which WON leads already have a job (by lead_id FK)
+        const { data: jobsForLeads, error: jobsErr } = await supabase
+          .from('jobs')
+          .select('lead_id')
+          .in('lead_id', wonLeadIds)
+          .eq('workspace_id', workspaceId);
+
+        if (jobsErr) notes.push(`jobs_for_leads query failed: ${sanitiseErr(jobsErr)}`);
+
+        const leadsWithJob = new Set(
+          (jobsForLeads ?? []).map((j) => (j as { lead_id: string }).lead_id),
+        );
+
+        for (const lead of wonLeads) {
+          if (!leadsWithJob.has(lead.id as string)) {
+            const clientLabel = (lead as { client_name: string | null }).client_name ?? 'unknown client';
+            candidates.push({
+              candidateId: `LEAD_WON_JOB_NOT_SYNCED_${lead.id}`,
+              type: 'LEAD_WON_JOB_NOT_SYNCED',
+              severity: 'medium',
+              workspaceId,
+              entityType: 'lead',
+              entityId: lead.id as string,
+              createdAt: (lead as { created_at: string | null }).created_at ?? now,
+              detectedAt: now,
+              likelyCause: `Lead "${clientLabel}" has WON status on the server but no corresponding job row exists in Supabase. The most likely cause is the lead was converted to a job on Android but the job row was never successfully synced (Android-local only). The website shows the correct server truth — the lead is WON but there is no job yet.`,
+              suggestedAction: `1) Open Android app and verify a job exists for "${clientLabel}". 2) If yes: trigger a full sync from Android Settings → Sync → Force Push, then re-check this diagnostic. 3) If no job on Android either: re-create the job from the Leads page on the website or Android. Do NOT manually delete the lead — it is the audit trail for this conversion.`,
+              confidenceLevel: 'high',
+              dependencies: [],
+              blockingEntities: [],
+              recoveryPreview: `No destructive action. Advisory only. Server lead row is correct and must be preserved. Missing job row must be synced from Android or re-created. After sync, this candidate will disappear from the next diagnostic run.`,
+              requiresManualReview: true,
+              reversible: true,
+              destructiveRisk: false,
+              autoRepairAllowed: false,
+              recoverabilityClass: 'recoverable',
+              targetEntityId: null,
+              targetEntityType: 'JOB',
+            });
+          }
+        }
+      }
+    } catch (e) {
+      notes.push(`lead_won_no_job detection threw: ${sanitiseErr(e)}`);
+    }
+
     // ── Sort, deduplicate by entityId, cap at MAX_CANDIDATES ───────────────
     const seen = new Set<string>();
     const deduplicated = sortCandidates(candidates).filter(c => {
@@ -337,6 +404,7 @@ export async function GET(req: NextRequest) {
         'All candidates are advisory. autoRepairAllowed = false on every candidate.',
         'Use simulate endpoint to preview any repair before considering manual execution.',
         'Web platform N/A candidates: LEAD_EXISTS_LOCAL_ONLY, LOCAL_REMOTE_MISMATCH, STALE_PENDING_ENTITY (no local DataStore on web).',
+        'LEAD_WON_JOB_NOT_SYNCED: WON lead with no server-side job — likely Android-local-only job. Fix: force Android sync or re-create job.',
         ...notes,
       ],
     };

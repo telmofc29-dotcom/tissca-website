@@ -22,6 +22,7 @@
 export type RecoveryCandidateType =
   | 'ATTACHMENT_CAN_REPARENT_TO_JOB'       // orphan attachment has matching job via lead_id chain
   | 'LEAD_EXISTS_LOCAL_ONLY'                // lead present locally, missing remotely (N/A on web)
+  | 'LEAD_WON_JOB_NOT_SYNCED'              // WON lead has no corresponding job row on server
   | 'JOB_BLOCKED_BY_MISSING_LEAD'          // job references a lead not found in this workspace
   | 'LEGACY_WORKSPACE_ID_MISSING'          // tool_attachment row has business_id but workspace_id NULL
   | 'DUPLICATE_REMOTE_ENTITY'              // two remote entities with same content + workspace

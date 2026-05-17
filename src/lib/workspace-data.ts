@@ -1,4 +1,4 @@
-// src/lib/workspace-data.ts v2.1
+// src/lib/workspace-data.ts v2.2
 //
 // PURPOSE:
 // Server-side helpers to resolve authenticated user context and query ALL
@@ -350,7 +350,47 @@ export async function getWorkspaceStats(resolved: ResolvedUser): Promise<Workspa
   const monthGross = (monthGrossResult.data ?? []).reduce(
     (sum, row) => sum + ((row as { grand_total: number | null }).grand_total ?? 0), 0,
   );
-  const materials = 0; // Honest placeholder — no materials/expenses table yet
+
+  // ── Materials cost: parse raw_payload from tool_attachments ─────────────────
+  // Android computes "Materials / job costs" at runtime from rawPayload items
+  // where costBucket == "other_direct_cost" on quick_quote/general tool types.
+  // Android NEVER pushes a pre-computed materials_total column to Supabase —
+  // the ToolAttachmentDto has no materials_total field. Querying that column
+  // would silently return 0. Instead we replicate Android's logic here:
+  //   1. Fetch all tool_attachments for this workspace (raw_payload + tool_key).
+  //   2. For each attachment: if tool_key is quick_quote or general,
+  //      sum items where costBucket == "other_direct_cost" (expenses).
+  //   3. This matches extractQuickQuoteExpenses() in CrmViewModel.kt exactly.
+  //
+  // NOTE: Attachments with no costBucket (old saves) contribute 0 — same as Android.
+  // NOTE: raw_payload changes are NEVER made here; this is read-only. (Locked rule.)
+  const { data: attachmentsForMaterials } = await supabase
+    .from('tool_attachments')
+    .select('tool_key, raw_payload')
+    .eq('workspace_id', docScopeId);
+
+  let materials = 0;
+  for (const att of (attachmentsForMaterials ?? []) as Array<{ tool_key: string | null; raw_payload: string | null }>) {
+    const tKey = String(att.tool_key || '').toLowerCase();
+    // Match Android: only quick_quote and general tool types contribute cost-of-sales
+    if (tKey !== 'quick_quote' && tKey !== 'general') continue;
+    if (!att.raw_payload) continue;
+    try {
+      const payload = JSON.parse(att.raw_payload) as { items?: Array<{ costBucket?: string; qty?: string | number; price?: string | number }> };
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      for (const item of items) {
+        // Android: isExpense=true sets costBucket="other_direct_cost"
+        if (item.costBucket !== 'other_direct_cost') continue;
+        const qty = parseFloat(String(item.qty ?? 0)) || 0;
+        const price = parseFloat(String(item.price ?? 0)) || 0;
+        materials += qty * price;
+      }
+    } catch {
+      // Malformed rawPayload — skip, same as Android
+    }
+  }
+  materials = Math.round(materials * 100) / 100;
+
   const monthNet = monthGross - materials;
 
   // ── Conversion Rate (deduped: won / (won + lost)) ──
