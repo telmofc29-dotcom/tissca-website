@@ -29,6 +29,22 @@ function ensureNotFoundManifests() {
 
 const nextConfig = {
   reactStrictMode: true,
+
+  // PDFKit uses fs.readFileSync(__dirname + '/data/Helvetica.afm') at runtime.
+  // When webpack bundles pdfkit, __dirname is rewritten to the chunks output
+  // directory (.next/server/chunks/) and the AFM files are not copied there,
+  // causing ENOENT on Vercel. Marking pdfkit as an external package prevents
+  // webpack from bundling it so __dirname stays correct at runtime.
+  serverExternalPackages: ['pdfkit'],
+
+  // Vercel's output file tracer cannot statically resolve the dynamic
+  // fs.readFileSync(__dirname + '/data/...') calls inside pdfkit.
+  // Explicitly include all AFM font metric files and the ICC colour profile
+  // so they are present in the serverless deployment bundle.
+  outputFileTracingIncludes: {
+    '**': ['./node_modules/pdfkit/js/data/**/*'],
+  },
+
   webpack: (config) => {
     config.plugins.push({
       apply: (compiler) => {
