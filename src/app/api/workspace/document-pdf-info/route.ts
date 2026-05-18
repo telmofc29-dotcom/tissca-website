@@ -189,14 +189,26 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'File too large (max 2MB)' }, { status: 400 });
     }
 
-    // Validate MIME type
-    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp', 'image/svg+xml'];
+    // Validate MIME type.
+    // Must match bucket's allowed types: image/png, image/jpeg, image/webp.
+    // SVG is excluded: not accepted by the business-logos bucket, and PDFKit
+    // cannot render SVG natively (would produce a silent blank logo).
+    const allowedTypes = ['image/png', 'image/jpeg', 'image/webp'];
     if (!allowedTypes.includes(file.type)) {
-      return NextResponse.json({ error: 'Invalid file type' }, { status: 400 });
+      return NextResponse.json({ error: 'Invalid file type. Allowed: PNG, JPEG, WebP' }, { status: 400 });
     }
 
     const supabase = createServerSupabaseClient();
-    const ext = file.name.split('.').pop() || 'png';
+
+    // Derive extension from validated MIME type — never from file.name.
+    // This guarantees the path is always {workspaceId}/logo.{png|jpg|webp},
+    // matching the bucket's allowed path patterns exactly.
+    const mimeToExt: Record<string, string> = {
+      'image/png': 'png',
+      'image/jpeg': 'jpg',
+      'image/webp': 'webp',
+    };
+    const ext = mimeToExt[file.type] ?? 'png';
     const filePath = `${resolved.workspaceId}/logo.${ext}`;
 
     const arrayBuffer = await file.arrayBuffer();
