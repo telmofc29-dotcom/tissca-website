@@ -26,15 +26,40 @@ export async function loadPdfIdentity(workspaceId: string): Promise<PdfIdentity 
 
   const identity = data as PdfIdentity;
 
-  // Pre-fetch logo image if URL exists
+  // Pre-fetch logo image if URL exists.
+  // The URL is a Supabase Storage public URL — the bucket must be set to public
+  // in the Supabase dashboard for this to succeed on Vercel.
   if (identity.logo_url) {
     try {
-      const res = await fetch(identity.logo_url);
+      // 5-second timeout so a slow/unreachable storage endpoint never hangs the PDF function.
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5_000);
+      let res: Response;
+      try {
+        res = await fetch(identity.logo_url, { signal: controller.signal });
+      } finally {
+        clearTimeout(timeoutId);
+      }
       if (res.ok) {
         const arrayBuffer = await res.arrayBuffer();
         identity._logoBuffer = Buffer.from(arrayBuffer);
+      } else {
+        console.warn(
+          '[loadPdfIdentity] Logo fetch failed HTTP',
+          res.status,
+          '— bucket: business-logos must be public. URL:',
+          identity.logo_url,
+        );
+        identity._logoBuffer = null;
       }
-    } catch {
+    } catch (err) {
+      const isTimeout = err instanceof Error && err.name === 'AbortError';
+      console.warn(
+        isTimeout
+          ? '[loadPdfIdentity] Logo fetch timed out (>5s) — Supabase Storage may be unreachable'
+          : '[loadPdfIdentity] Logo fetch threw — check bucket policy or network:',
+        err,
+      );
       identity._logoBuffer = null;
     }
   }
@@ -91,8 +116,10 @@ export function drawBrandedHeader(
   if (identity?._logoBuffer) {
     try {
       doc.image(identity._logoBuffer, MARGIN, y, { height: 55 });
-    } catch {
-      // Fallback to text if image fails
+    } catch (err) {
+      // PDFKit only natively supports PNG and JPEG.
+      // WebP uploads are accepted by the bucket but will fail here — log so it's diagnosable.
+      console.warn('[drawBrandedHeader] doc.image() failed — logo may be WebP or corrupt:', err);
       doc.fontSize(18).font('Helvetica-Bold').fillColor(identity?.brand_color || '#1e40af')
         .text(identity?.company_name || 'TISSCA', MARGIN, y + 10);
     }
@@ -123,6 +150,17 @@ export function drawBrandedHeader(
   }
 
   y += 8;
+
+  // Horizontal separator line under header — matches Android PDF divider
+  doc.save();
+  doc.moveTo(MARGIN, y)
+    .lineTo(PAGE_W - MARGIN, y)
+    .strokeColor(identity?.brand_color || '#dddddd')
+    .lineWidth(1.5)
+    .stroke();
+  doc.restore();
+  y += 12;
+
   return y; // return Y position after header
 }
 
@@ -182,6 +220,13 @@ export function drawClientSection(
 /**
  * Draw line items table matching the mobile app format.
  * Columns: Description | Unit | Qty | Price | Total
+ *
+ * IMPORTANT: All doc.text() calls use `lineBreak: false` to prevent PDFKit from
+ * advancing the Y cursor after each column cell. Without this, subsequent same-row
+ * columns that share the same Y coordinate cause PDFKit to enter a bad state —
+ * especially when a doc.image() call (logo) preceded the table and left the internal
+ * cursor at a different position. We also wrap in save/restore so the brand-color fill
+ * does not leak fillColor to subsequent drawing operations.
  */
 export function drawItemsTable(
   doc: PDFKit.PDFDocument,
@@ -190,54 +235,82 @@ export function drawItemsTable(
   _brandColor: string,
   currencyCode?: string | null,
 ): number {
+  doc.save();
+
   const col1 = MARGIN;
   const col2 = 280;
   const col3 = 340;
   const col4 = 400;
   const col5 = PAGE_W - MARGIN;
   let y = startY;
+  // Track where each page section of the table starts (for the outer border rect).
+  let pageStartY = startY;
+  // Leave 110px of clear space so rows never overlap the footer bar.
+  const footerSafeY = doc.page.height - 110;
 
-  // Header row
-  const headerH = 22;
-  doc.rect(col1, y, CONTENT_W, headerH).fill('#f5f5f5');
-  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333');
-  doc.text('Description', col1 + 8, y + 6);
-  doc.text('Unit', col2, y + 6, { width: 50, align: 'center' });
-  doc.text('Qty', col3, y + 6, { width: 50, align: 'center' });
-  doc.text('Price', col4, y + 6, { width: 60, align: 'right' });
-  doc.text('Total', col5 - 70, y + 6, { width: 60, align: 'right' });
+  // ── Helper: draw table header row ──────────────────────────────────────────
+  function drawHeader(atY: number): number {
+    const headerH = 22;
+    doc.rect(col1, atY, CONTENT_W, headerH).fill(_brandColor || '#1e40af');
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
+    // lineBreak: false keeps the cursor from advancing so each column starts at atY+7
+    doc.text('Description', col1 + 8, atY + 7, { lineBreak: false });
+    doc.text('Unit',  col2,      atY + 7, { width: 50,  align: 'center', lineBreak: false });
+    doc.text('Qty',   col3,      atY + 7, { width: 50,  align: 'center', lineBreak: false });
+    doc.text('Price', col4,      atY + 7, { width: 60,  align: 'right',  lineBreak: false });
+    doc.text('Total', col5 - 70, atY + 7, { width: 60,  align: 'right',  lineBreak: false });
+    // Border lines above and below header
+    doc.moveTo(col1, atY).lineTo(PAGE_W - MARGIN, atY)
+      .strokeColor('#dddddd').lineWidth(0.5).stroke();
+    doc.moveTo(col1, atY + headerH).lineTo(PAGE_W - MARGIN, atY + headerH)
+      .strokeColor('#dddddd').lineWidth(0.5).stroke();
+    return atY + headerH;
+  }
 
-  // Lines
-  doc.moveTo(col1, y).lineTo(PAGE_W - MARGIN, y).stroke('#dddddd');
-  doc.moveTo(col1, y + headerH).lineTo(PAGE_W - MARGIN, y + headerH).stroke('#dddddd');
-
-  y += headerH;
+  y = drawHeader(y);
   const rowH = 26;
 
   for (const item of items) {
-    if (y > 720) {
+    // Page overflow: close border on current page, start fresh on next page
+    if (y + rowH > footerSafeY) {
+      doc.rect(col1, pageStartY, CONTENT_W, y - pageStartY)
+        .strokeColor('#dddddd').lineWidth(0.5).stroke();
       doc.addPage();
-      y = 40;
+      y = MARGIN;
+      pageStartY = y;
+      y = drawHeader(y);
     }
 
-    // Row border
-    doc.moveTo(col1, y + rowH).lineTo(PAGE_W - MARGIN, y + rowH).stroke('#eeeeee');
+    // Row bottom border
+    doc.moveTo(col1, y + rowH).lineTo(PAGE_W - MARGIN, y + rowH)
+      .strokeColor('#eeeeee').lineWidth(0.5).stroke();
 
+    // Display qty: preserve decimal places for area measurements (19.44, 31.60 etc.)
+    const qtyDisplay = Number.isInteger(item.qty)
+      ? String(item.qty)
+      : item.qty.toFixed(2);
+
+    // Reset font + color explicitly for every cell — prevents the brand-color fill
+    // from the header row from leaking into item text after save/restore interplay.
     doc.fontSize(9).font('Helvetica').fillColor('#222222')
-      .text(item.description, col1 + 8, y + 7, { width: col2 - col1 - 16 });
-    doc.fillColor('#666666')
-      .text(item.unit, col2, y + 7, { width: 50, align: 'center' });
-    doc.text(String(item.qty), col3, y + 7, { width: 50, align: 'center' });
-    doc.text(fmtCur(item.price, currencyCode), col4, y + 7, { width: 60, align: 'right' });
-    doc.font('Helvetica-Bold').fillColor('#111111')
-      .text(fmtCur(item.total, currencyCode), col5 - 70, y + 7, { width: 60, align: 'right' });
+      .text(item.description, col1 + 8, y + 7, { width: col2 - col1 - 16, lineBreak: false });
+    doc.fontSize(9).font('Helvetica').fillColor('#666666')
+      .text(item.unit, col2, y + 7, { width: 50, align: 'center', lineBreak: false });
+    doc.fontSize(9).font('Helvetica').fillColor('#666666')
+      .text(qtyDisplay, col3, y + 7, { width: 50, align: 'center', lineBreak: false });
+    doc.fontSize(9).font('Helvetica').fillColor('#666666')
+      .text(fmtCur(item.price, currencyCode), col4, y + 7, { width: 60, align: 'right', lineBreak: false });
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
+      .text(fmtCur(item.total, currencyCode), col5 - 70, y + 7, { width: 60, align: 'right', lineBreak: false });
 
     y += rowH;
   }
 
-  // Outer border
-  doc.rect(col1, startY, CONTENT_W, y - startY).stroke('#dddddd');
+  // Outer border for the last (or only) page section
+  doc.rect(col1, pageStartY, CONTENT_W, y - pageStartY)
+    .strokeColor('#dddddd').lineWidth(0.5).stroke();
 
+  doc.restore();
   return y;
 }
 
@@ -311,8 +384,8 @@ export function drawFooterBar(
   const footerY = doc.page.height - 100;
   const halfW = CONTENT_W / 2;
 
-  // Background bar
-  doc.rect(MARGIN, footerY, CONTENT_W, 70).fill('#f8f8f8');
+  // Background bar — 95px tall to accommodate up to 8 contact/payment lines
+  doc.rect(MARGIN, footerY, CONTENT_W, 95).fill('#f8f8f8');
   doc.moveTo(MARGIN, footerY).lineTo(PAGE_W - MARGIN, footerY).stroke('#dddddd');
 
   // Contact Details (left)
@@ -327,6 +400,11 @@ export function drawFooterBar(
     [identity?.city, identity?.postcode].filter(Boolean).join('  '),
     identity?.email,
     identity?.phone,
+    // v1.1.0: Company Number and VAT Number — parity with Android contactDetailsFromSettings
+    identity?.company_number ? `Company No: ${identity.company_number}` : null,
+    (identity?.vat_enabled || identity?.vat_number) && identity?.vat_number
+      ? `VAT No: ${identity.vat_number}`
+      : null,
   ].filter(Boolean);
   for (const line of contactLines) {
     doc.text(line!, MARGIN + 10, ly, { width: halfW - 20 });
