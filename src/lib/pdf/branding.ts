@@ -121,31 +121,32 @@ export function drawBrandedHeader(
       // WebP uploads are accepted by the bucket but will fail here — log so it's diagnosable.
       console.warn('[drawBrandedHeader] doc.image() failed — logo may be WebP or corrupt:', err);
       doc.fontSize(18).font('Helvetica-Bold').fillColor(identity?.brand_color || '#1e40af')
-        .text(identity?.company_name || 'TISSCA', MARGIN, y + 10);
+        .text(identity?.company_name || 'TISSCA', MARGIN, y + 10, { lineBreak: false });
     }
   } else if (identity?.company_name) {
     doc.fontSize(18).font('Helvetica-Bold').fillColor(identity.brand_color || '#1e40af')
-      .text(identity.company_name, MARGIN, y + 10);
+      .text(identity.company_name, MARGIN, y + 10, { lineBreak: false });
   } else {
     doc.fontSize(18).font('Helvetica-Bold').fillColor('#1e40af')
-      .text('TISSCA', MARGIN, y + 10);
+      .text('TISSCA', MARGIN, y + 10, { lineBreak: false });
   }
 
-  // Document type title (right-aligned)
+  // Document type title (right-aligned) — lineBreak: false prevents cursor advancing
+  // after this call, which would push subsequent explicit-y draws backward in PDFKit
   doc.fontSize(22).font('Helvetica-Bold').fillColor('#111111')
-    .text(docType, MARGIN, y + 5, { width: CONTENT_W, align: 'right' });
+    .text(docType, MARGIN, y + 5, { width: CONTENT_W, align: 'right', lineBreak: false });
 
   y += 55;
 
   // Company name + tagline below logo (if logo exists)
   if (identity?._logoBuffer && identity?.company_name) {
     doc.fontSize(11).font('Helvetica-Bold').fillColor('#333333')
-      .text(identity.company_name.toUpperCase(), MARGIN, y);
+      .text(identity.company_name.toUpperCase(), MARGIN, y, { lineBreak: false });
     y += 16;
   }
   if (identity?.tagline) {
     doc.fontSize(8).font('Helvetica').fillColor('#999999')
-      .text(identity.tagline, MARGIN, y);
+      .text(identity.tagline, MARGIN, y, { lineBreak: false });
     y += 14;
   }
 
@@ -184,10 +185,13 @@ export function drawInfoBox(
 
   let rowY = y + padding;
   for (const row of rows) {
+    // lineBreak: false on both cells: prevents cursor advancing after the label draw
+    // which would push the value draw to the wrong y on the next PDFKit internal tick.
     doc.fontSize(8).font('Helvetica').fillColor('#666666')
-      .text(row.label, boxX + padding, rowY, { width: 100 });
+      .text(row.label, boxX + padding, rowY, { width: 100, lineBreak: false });
     doc.fontSize(8).font('Helvetica-Bold').fillColor('#111111')
-      .text(row.value || '—', boxX + padding + 100, rowY, { width: boxW - padding * 2 - 100, align: 'right' });
+      .text(row.value || '—', boxX + padding + 100, rowY,
+        { width: boxW - padding * 2 - 100, align: 'right', lineBreak: false });
     rowY += rowH;
   }
 
@@ -202,19 +206,23 @@ export function drawClientSection(
   y: number,
   client: { name?: string; company?: string; address?: string; phone?: string; email?: string },
 ): void {
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#666666').text('To', MARGIN, y);
+  // Width 260 keeps text within the left column (col1=40 to col2=280 gap),
+  // preventing overlap with the info box. lineBreak: false prevents cursor drift.
+  const COL_W = 260;
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#666666')
+    .text('To', MARGIN, y, { lineBreak: false });
   let cy = y + 14;
   doc.fontSize(10).font('Helvetica').fillColor('#111111');
-  if (client.name) { doc.text(client.name, MARGIN, cy); cy += 14; }
-  if (client.company) { doc.text(client.company, MARGIN, cy); cy += 14; }
+  if (client.name)    { doc.text(client.name,    MARGIN, cy, { width: COL_W, lineBreak: false }); cy += 14; }
+  if (client.company) { doc.text(client.company, MARGIN, cy, { width: COL_W, lineBreak: false }); cy += 14; }
   if (client.address) {
     const lines = client.address.split('\n');
     for (const line of lines) {
-      if (line.trim()) { doc.text(line.trim(), MARGIN, cy); cy += 14; }
+      if (line.trim()) { doc.text(line.trim(), MARGIN, cy, { width: COL_W, lineBreak: false }); cy += 14; }
     }
   }
-  if (client.phone) { doc.text(client.phone, MARGIN, cy); cy += 14; }
-  if (client.email) { doc.text(client.email, MARGIN, cy); }
+  if (client.phone) { doc.text(client.phone, MARGIN, cy, { width: COL_W, lineBreak: false }); cy += 14; }
+  if (client.email) { doc.text(client.email, MARGIN, cy, { width: COL_W, lineBreak: false }); }
 }
 
 /**
@@ -225,92 +233,103 @@ export function drawClientSection(
  * advancing the Y cursor after each column cell. Without this, subsequent same-row
  * columns that share the same Y coordinate cause PDFKit to enter a bad state —
  * especially when a doc.image() call (logo) preceded the table and left the internal
- * cursor at a different position. We also wrap in save/restore so the brand-color fill
- * does not leak fillColor to subsequent drawing operations.
+ * cursor at a different position.
+ *
+ * Architecture (Android PdfGenerator.kt parity):
+ * - NO doc.save()/doc.restore() wrapper — save/restore are per PDF content-stream and
+ *   MUST be balanced within a single page. Wrapping a function that calls doc.addPage()
+ *   produces unbalanced Q operators (PDF spec violation; some readers reject the file).
+ * - opts.onBeforePageBreak fires BEFORE doc.addPage() so the caller can draw the
+ *   footer and update the page counter. drawItemsTable calls doc.addPage() itself.
  */
 export function drawItemsTable(
   doc: PDFKit.PDFDocument,
   startY: number,
   items: Array<{ description: string; unit: string; qty: number; price: number; total: number }>,
-  _brandColor: string,
+  brandColor: string,
   currencyCode?: string | null,
+  opts?: {
+    /**
+     * Called just before doc.addPage() when a row overflows the footer zone.
+     * Draw the footer bar and increment the page counter here.
+     * Do NOT call doc.addPage() inside this callback — drawItemsTable does that.
+     */
+    onBeforePageBreak?: () => void;
+  },
 ): number {
-  doc.save();
+  const col1    = MARGIN;            // 40 — description
+  const col2    = 280;               // unit
+  const col3    = 340;               // qty
+  const col4    = 400;               // price
+  const colEnd  = PAGE_W - MARGIN;  // 555.28 — right edge
+  const headerH = 22;
+  const rowH    = 26;
 
-  const col1 = MARGIN;
-  const col2 = 280;
-  const col3 = 340;
-  const col4 = 400;
-  const col5 = PAGE_W - MARGIN;
   let y = startY;
-  // Track where each page section of the table starts (for the outer border rect).
-  let pageStartY = startY;
-  // Leave 110px of clear space so rows never overlap the footer bar.
-  const footerSafeY = doc.page.height - 110;
+  let pageStartY = startY; // tracks outer-border start per page section
 
-  // ── Helper: draw table header row ──────────────────────────────────────────
-  function drawHeader(atY: number): number {
-    const headerH = 22;
-    doc.rect(col1, atY, CONTENT_W, headerH).fill(_brandColor || '#1e40af');
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#ffffff');
-    // lineBreak: false keeps the cursor from advancing so each column starts at atY+7
-    doc.text('Description', col1 + 8, atY + 7, { lineBreak: false });
-    doc.text('Unit',  col2,      atY + 7, { width: 50,  align: 'center', lineBreak: false });
-    doc.text('Qty',   col3,      atY + 7, { width: 50,  align: 'center', lineBreak: false });
-    doc.text('Price', col4,      atY + 7, { width: 60,  align: 'right',  lineBreak: false });
-    doc.text('Total', col5 - 70, atY + 7, { width: 60,  align: 'right',  lineBreak: false });
-    // Border lines above and below header
-    doc.moveTo(col1, atY).lineTo(PAGE_W - MARGIN, atY)
-      .strokeColor('#dddddd').lineWidth(0.5).stroke();
-    doc.moveTo(col1, atY + headerH).lineTo(PAGE_W - MARGIN, atY + headerH)
-      .strokeColor('#dddddd').lineWidth(0.5).stroke();
+  // ── Inner: draw branded table header ──────────────────────────────────────
+  function drawTableHeader(atY: number): number {
+    doc.rect(col1, atY, CONTENT_W, headerH).fill(brandColor || '#1e40af');
+    // Explicit fillColor reset after rect.fill() — brand color must not leak to cells
+    doc.fillColor('#ffffff').fontSize(8).font('Helvetica-Bold');
+    doc.text('Description',  col1 + 8,    atY + 7, { lineBreak: false });
+    doc.text('Unit',         col2,        atY + 7, { width: 50, align: 'center', lineBreak: false });
+    doc.text('Qty',          col3,        atY + 7, { width: 50, align: 'center', lineBreak: false });
+    doc.text('Price',        col4,        atY + 7, { width: 60, align: 'right',  lineBreak: false });
+    doc.text('Total',        colEnd - 70, atY + 7, { width: 60, align: 'right',  lineBreak: false });
+    doc.moveTo(col1, atY).lineTo(colEnd, atY).strokeColor('#dddddd').lineWidth(0.5).stroke();
+    doc.moveTo(col1, atY + headerH).lineTo(colEnd, atY + headerH).strokeColor('#dddddd').lineWidth(0.5).stroke();
+    doc.fillColor('#222222'); // reset fill so first data row renders correctly
     return atY + headerH;
   }
 
-  y = drawHeader(y);
-  const rowH = 26;
+  y = drawTableHeader(y);
 
   for (const item of items) {
-    // Page overflow: close border on current page, start fresh on next page
-    if (y + rowH > footerSafeY) {
+    // Evaluate safe-bottom live each row (same for all A4 pages, but correct practice)
+    const safeBottom = doc.page.height - 110; // footer zone (100pt) + 10pt buffer
+
+    if (y + rowH > safeBottom) {
+      // Close outer border on the current page before leaving it
       doc.rect(col1, pageStartY, CONTENT_W, y - pageStartY)
         .strokeColor('#dddddd').lineWidth(0.5).stroke();
+
+      // Caller finalises current page (footer + page number) — must NOT call addPage
+      opts?.onBeforePageBreak?.();
+
       doc.addPage();
       y = MARGIN;
       pageStartY = y;
-      y = drawHeader(y);
+      y = drawTableHeader(y);
     }
 
-    // Row bottom border
-    doc.moveTo(col1, y + rowH).lineTo(PAGE_W - MARGIN, y + rowH)
+    doc.moveTo(col1, y + rowH).lineTo(colEnd, y + rowH)
       .strokeColor('#eeeeee').lineWidth(0.5).stroke();
 
-    // Display qty: preserve decimal places for area measurements (19.44, 31.60 etc.)
     const qtyDisplay = Number.isInteger(item.qty)
       ? String(item.qty)
       : item.qty.toFixed(2);
 
-    // Reset font + color explicitly for every cell — prevents the brand-color fill
-    // from the header row from leaking into item text after save/restore interplay.
+    // Every cell: explicit font + fillColor to prevent brand-color state leakage
     doc.fontSize(9).font('Helvetica').fillColor('#222222')
       .text(item.description, col1 + 8, y + 7, { width: col2 - col1 - 16, lineBreak: false });
     doc.fontSize(9).font('Helvetica').fillColor('#666666')
-      .text(item.unit, col2, y + 7, { width: 50, align: 'center', lineBreak: false });
+      .text(item.unit || '', col2, y + 7, { width: 50, align: 'center', lineBreak: false });
     doc.fontSize(9).font('Helvetica').fillColor('#666666')
       .text(qtyDisplay, col3, y + 7, { width: 50, align: 'center', lineBreak: false });
     doc.fontSize(9).font('Helvetica').fillColor('#666666')
       .text(fmtCur(item.price, currencyCode), col4, y + 7, { width: 60, align: 'right', lineBreak: false });
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#111111')
-      .text(fmtCur(item.total, currencyCode), col5 - 70, y + 7, { width: 60, align: 'right', lineBreak: false });
+      .text(fmtCur(item.total, currencyCode), colEnd - 70, y + 7, { width: 60, align: 'right', lineBreak: false });
 
     y += rowH;
   }
 
-  // Outer border for the last (or only) page section
+  // Close outer border on the last (or only) page section
   doc.rect(col1, pageStartY, CONTENT_W, y - pageStartY)
     .strokeColor('#dddddd').lineWidth(0.5).stroke();
 
-  doc.restore();
   return y;
 }
 
@@ -333,13 +352,13 @@ export function drawTotalsBox(
   for (const row of rows) {
     const font = row.bold ? 'Helvetica-Bold' : 'Helvetica';
     const fontSize = row.bold ? 10 : 9;
-    doc.fontSize(fontSize).font(font).fillColor('#333333')
-      .text(row.label, boxX + 8, rowY);
-    doc.text(row.value, boxX + 8, rowY, { width: boxW - 16, align: 'right' });
     if (row.bold) {
-      // Draw separator above bold line
-      doc.moveTo(boxX, rowY - 2).lineTo(boxX + boxW, rowY - 2).stroke('#cccccc');
+      doc.moveTo(boxX, rowY - 2).lineTo(boxX + boxW, rowY - 2).strokeColor('#cccccc').lineWidth(0.5).stroke();
     }
+    doc.fontSize(fontSize).font(font).fillColor('#333333')
+      .text(row.label, boxX + 8, rowY, { lineBreak: false });
+    doc.fontSize(fontSize).font(font).fillColor('#333333')
+      .text(row.value, boxX + 8, rowY, { width: boxW - 16, align: 'right', lineBreak: false });
     rowY += rowH;
   }
 
@@ -349,26 +368,43 @@ export function drawTotalsBox(
 /**
  * Draw NOTES section.
  */
+/**
+ * Returns the estimated height of a notes section box without drawing it.
+ * Use this for page-break-before checks in the route.
+ */
+export function notesBoxHeight(
+  doc: PDFKit.PDFDocument,
+  notes: string,
+): number {
+  if (!notes) return 0;
+  const padX = 10;
+  const padY = 8;
+  const textH = doc.heightOfString(notes, { width: CONTENT_W - padX * 2 });
+  return padY + 16 + textH + padY + 16; // box + bottom gap
+}
+
 export function drawNotesSection(
   doc: PDFKit.PDFDocument,
   y: number,
   notes: string,
 ): number {
   if (!notes) return y;
-  if (y > 680) { doc.addPage(); y = 40; }
+  // Page-break guard removed — caller (route) is responsible for checking
+  // safeBottom before calling this function and adding a new page if needed.
 
   const padX = 10;
   const padY = 8;
   const maxW = CONTENT_W;
 
-  doc.fontSize(9).font('Helvetica-Bold').fillColor('#cc8800').text('NOTES', MARGIN + padX, y + padY);
+  doc.fontSize(9).font('Helvetica-Bold').fillColor('#cc8800')
+    .text('NOTES', MARGIN + padX, y + padY, { lineBreak: false });
   const textY = y + padY + 16;
   doc.fontSize(9).font('Helvetica').fillColor('#333333')
     .text(notes, MARGIN + padX, textY, { width: maxW - padX * 2 });
   const textH = doc.heightOfString(notes, { width: maxW - padX * 2 });
   const boxH = padY + 16 + textH + padY;
 
-  doc.rect(MARGIN, y, maxW, boxH).stroke('#e5e5e5');
+  doc.rect(MARGIN, y, maxW, boxH).strokeColor('#e5e5e5').lineWidth(0.5).stroke();
 
   return y + boxH + 16;
 }
@@ -377,46 +413,31 @@ export function drawNotesSection(
  * Draw Contact Details + Payment Details footer bar.
  * Matches the mobile app format: two columns at the bottom of the page.
  */
+/**
+ * The reserved vertical space at the bottom of each page for the footer bar.
+ * Body content must stop at (page.height - FOOTER_RESERVED) to avoid overlap.
+ * Route and drawItemsTable both use this value for page-break guards.
+ */
+export const FOOTER_RESERVED = 110; // 100pt bar + 10pt buffer
+
 export function drawFooterBar(
   doc: PDFKit.PDFDocument,
   identity: PdfIdentity | null,
 ): void {
-  const footerY = doc.page.height - 100;
-  const halfW = CONTENT_W / 2;
-
-  // Background bar — 95px tall to accommodate up to 8 contact/payment lines
-  doc.rect(MARGIN, footerY, CONTENT_W, 95).fill('#f8f8f8');
-  doc.moveTo(MARGIN, footerY).lineTo(PAGE_W - MARGIN, footerY).stroke('#dddddd');
-
-  // Contact Details (left)
-  let ly = footerY + 8;
-  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333').text('Contact Details', MARGIN + 10, ly);
-  ly += 12;
-  doc.fontSize(7).font('Helvetica').fillColor('#555555');
-  const contactLines = [
+  // Compute contact + payment line arrays first so we can size the bar dynamically.
+  const contactLines: string[] = [
     identity?.contact_name,
     identity?.trading_name || identity?.company_name,
     identity?.address_line_1,
-    [identity?.city, identity?.postcode].filter(Boolean).join('  '),
+    identity?.address_line_2 || null,
+    [identity?.city, identity?.postcode].filter(Boolean).join('  ') || null,
     identity?.email,
     identity?.phone,
-    // v1.1.0: Company Number and VAT Number — parity with Android contactDetailsFromSettings
-    identity?.company_number ? `Company No: ${identity.company_number}` : null,
-    (identity?.vat_enabled || identity?.vat_number) && identity?.vat_number
-      ? `VAT No: ${identity.vat_number}`
-      : null,
-  ].filter(Boolean);
-  for (const line of contactLines) {
-    doc.text(line!, MARGIN + 10, ly, { width: halfW - 20 });
-    ly += 9;
-  }
+    // Company No and VAT No appear in the top-right info box; omit here to avoid
+    // duplication and to keep the footer bar height manageable.
+  ].filter((v): v is string => !!v);
 
-  // Payment Details (right)
-  let ry = footerY + 8;
-  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333').text('Payment Details', MARGIN + halfW + 10, ry);
-  ry += 12;
-  doc.fontSize(7).font('Helvetica').fillColor('#555555');
-  const paymentLines = [
+  const paymentLines: string[] = [
     identity?.account_name ? `Account Name: ${identity.account_name}` : null,
     identity?.bank_name ? `Bank: ${identity.bank_name}` : null,
     identity?.sort_code ? `Sort Code: ${identity.sort_code}` : null,
@@ -424,23 +445,53 @@ export function drawFooterBar(
     identity?.iban ? `IBAN: ${identity.iban}` : null,
     identity?.swift_bic ? `SWIFT/BIC: ${identity.swift_bic}` : null,
     identity?.routing_number ? `Routing: ${identity.routing_number}` : null,
-  ].filter(Boolean);
+  ].filter((v): v is string => !!v);
+
+  // Bar height: header line (8pt bold + 12pt gap) + data lines (9pt each) + top/bottom padding
+  const LINE_H = 9;
+  const maxLines = Math.max(contactLines.length, paymentLines.length);
+  const barH = Math.max(70, 8 + 12 + maxLines * LINE_H + 8); // min 70pt
+  const footerY = doc.page.height - barH - 10; // 10pt gap from bottom
+  const halfW = CONTENT_W / 2;
+
+  // Background bar
+  doc.rect(MARGIN, footerY, CONTENT_W, barH).fill('#f8f8f8');
+  doc.moveTo(MARGIN, footerY).lineTo(PAGE_W - MARGIN, footerY)
+    .strokeColor('#dddddd').lineWidth(0.5).stroke();
+
+  // Contact Details (left)
+  let ly = footerY + 8;
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
+    .text('Contact Details', MARGIN + 10, ly, { lineBreak: false });
+  ly += 12;
+  doc.fontSize(7).font('Helvetica').fillColor('#555555');
+  for (const line of contactLines) {
+    doc.text(line, MARGIN + 10, ly, { width: halfW - 20, lineBreak: false });
+    ly += LINE_H;
+  }
+
+  // Payment Details (right)
+  let ry = footerY + 8;
+  doc.fontSize(8).font('Helvetica-Bold').fillColor('#333333')
+    .text('Payment Details', MARGIN + halfW + 10, ry, { lineBreak: false });
+  ry += 12;
+  doc.fontSize(7).font('Helvetica').fillColor('#555555');
   for (const line of paymentLines) {
-    doc.text(line!, MARGIN + halfW + 10, ry, { width: halfW - 20 });
-    ry += 9;
+    doc.text(line, MARGIN + halfW + 10, ry, { width: halfW - 20, lineBreak: false });
+    ry += LINE_H;
   }
 }
 
 /**
  * Draw page number at bottom right.
+ * Called once per page after footer bar — positioned below the footer bar.
  */
 export function drawPageNumber(
   doc: PDFKit.PDFDocument,
   pageNum: number,
-  _totalPages: number,
 ): void {
   doc.fontSize(7).font('Helvetica').fillColor('#999999')
-    .text(`Page ${pageNum}`, MARGIN, doc.page.height - 20, { width: CONTENT_W, align: 'right' });
+    .text(`Page ${pageNum}`, MARGIN, doc.page.height - 14, { width: CONTENT_W, align: 'right', lineBreak: false });
 }
 
 /**
