@@ -290,7 +290,7 @@ async function generateInvoicePDF(data: {
         doc.switchToPage(i);
         if (includeWatermark) drawWatermark(doc);
         drawFooterBar(doc, identity);
-        drawPageNumber(doc, i + 1, pages.count);
+        drawPageNumber(doc, i + 1);
       }
 
       doc.end();
