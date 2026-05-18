@@ -3,21 +3,20 @@ import { createServerSupabaseClient } from '@/lib/supabase';
 import PDFDocument from 'pdfkit';
 import { Quote, QuoteItem, Client } from '@/types/quotes';
 import { persistDocumentAndLog, type ResolvedUser } from '@/lib/workspace-data';
-import { formatCurrency as fmtCur } from '@/lib/currency';
+import { isPro, normalizePlanTier } from '@/lib/plans';
 import {
   loadPdfIdentityByBusiness,
   loadPdfIdentityByUser,
-  drawBrandedHeader,
-  drawInfoBox,
-  drawClientSection,
-  drawItemsTable,
-  drawTotalsBox,
-  drawNotesSection,
-  drawFooterBar,
-  drawPageNumber,
-  drawWatermark,
+  renderPdfBody,
   type PdfIdentity,
 } from '@/lib/pdf/branding';
+
+// Contract §13 money format — NO thousands separator.
+const SYMBOLS: Record<string, string> = { GBP: '£', EUR: '€', USD: '$' };
+function fmtMoney(value: number, code?: string | null): string {
+  const c = (code ?? 'GBP').toUpperCase();
+  return `${SYMBOLS[c] ?? c}${value.toFixed(2)}`;
+}
 
 /**
  * GET /api/quotes/:id/pdf
@@ -102,17 +101,17 @@ export async function GET(
     const identity = await loadPdfIdentityByBusiness(quote.business_id)
       ?? await loadPdfIdentityByUser(user.id);
 
-    // Check watermark flag
-    const includeWatermark = (quote as any).includeWatermark === true;
+    // Plan gating per contract §1.1
+    const planTier = (business as any)?.plan_tier ?? null;
+    const isProUser = isPro(normalizePlanTier(planTier));
 
-    // Generate PDF
+    // Generate PDF via contract-pure renderer
     const pdfBuffer = await generateQuotePDF({
       quote: quote as Quote,
       client: client as Client,
-      business: business as any,
       items: items as QuoteItem[],
       identity,
-      includeWatermark,
+      isProUser,
     });
 
     // Persist document metadata + history event (fire-and-forget)
@@ -174,145 +173,106 @@ export async function GET(
   }
 }
 
+
 /**
- * Generate branded PDF document for a quote.
- * Matches the mobile app layout: logo + title, info box, client, items table,
- * subtotal/total, notes, contact+payment footer bar.
+ * Generate branded PDF document for a quote via contract-pure renderPdfBody().
+ * Behavioural port of Android PdfGenerator.kt v3.11.0.
  */
 async function generateQuotePDF(data: {
   quote: Quote;
   client: Client;
-  business: any;
   items: QuoteItem[];
   identity: PdfIdentity | null;
-  includeWatermark: boolean;
+  isProUser: boolean;
 }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
-      const { quote, client, items, identity, includeWatermark } = data;
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 40,
-        bufferPages: true,
-      });
+      const { quote, client, items, identity, isProUser } = data;
+      const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: true });
 
       const buffers: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (e: any) => reject(e));
 
-      // ─── Header: logo + QUOTE title ──────────────────────────
-      let y = drawBrandedHeader(doc, identity, 'QUOTE');
-
-      // ─── Client "To" section (left) + Info box (right) ───────
       const fmtDate = (d: string | null) =>
         d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
+      const cc = quote.currency ?? identity?.default_currency ?? 'GBP';
+
       const infoRows = [
         { label: 'Date', value: fmtDate(quote.created_at) },
-        { label: 'Ref No', value: quote.quote_number },
+        { label: 'Ref No', value: quote.quote_number ?? '—' },
         { label: 'Client Ref', value: (client as any)?.reference || '—' },
         { label: 'Email', value: client?.email || '—' },
         { label: 'Client Phone Number', value: client?.phone || '—' },
       ];
-      if (quote.notes) {
-        infoRows.push({ label: 'Notes', value: quote.notes.slice(0, 120) });
-      }
 
-      const infoBoxBottom = drawInfoBox(doc, y, infoRows);
-
-      // Client section at same Y but on the left
-      const address = [
+      const addressLines = [
+        client?.company_name,
         client?.address_line_1,
         client?.address_line_2,
         [client?.city, client?.postcode].filter(Boolean).join(' '),
-      ].filter(Boolean).join('\n');
+        client?.country,
+      ].filter(Boolean) as string[];
 
-      drawClientSection(doc, y, {
-        name: client?.name ?? undefined,
-        company: client?.company_name ?? undefined,
-        address,
-        phone: client?.phone ?? undefined,
-        email: client?.email ?? undefined,
-      });
-
-      y = Math.max(infoBoxBottom, y + 100) + 15;
-
-      // ─── Line items table ────────────────────────────────────
-      const tableItems = items.map((item) => ({
-        description: item.custom_description || 'Custom Item',
-        unit: 'Item',
-        qty: item.quantity,
-        price: item.unit_price,
-        total: item.quantity * item.unit_price,
-      }));
-
-      y = drawItemsTable(doc, y, tableItems, identity?.brand_color || '#1e40af', quote.currency);
-      y += 10;
-
-      // ─── Totals box ─────────────────────────────────────────
+      // Totals — contract §5
       const subtotal = items.reduce((sum, i) => sum + i.quantity * i.unit_price, 0);
-
-      // Phase G1: Discount — read from quote structured fields
       const discountType = (quote as any).discount_type ?? 'none';
       const discountVal = Number((quote as any).discount_value ?? 0);
       let discountAmount = 0;
-      if (discountType === 'percentage' && discountVal > 0) {
-        discountAmount = subtotal * (discountVal / 100);
-      } else if (discountType === 'fixed' && discountVal > 0) {
-        discountAmount = discountVal;
-      }
+      if (discountType === 'percentage' && discountVal > 0) discountAmount = subtotal * (discountVal / 100);
+      else if (discountType === 'fixed' && discountVal > 0) discountAmount = discountVal;
       const afterDiscount = subtotal - discountAmount;
-
       const vatRate = quote.vat_rate ?? 0;
       const vat = vatRate > 0 ? afterDiscount * (vatRate / 100) : 0;
       const total = afterDiscount + vat;
-
-      // Phase G1: Deposit — show only as "Deposit requested" on quote stage
       const depositType = (quote as any).deposit_type ?? 'none';
       const depositVal = Number((quote as any).deposit_value ?? 0);
       let depositAmount = 0;
-      if (depositType === 'percentage' && depositVal > 0) {
-        depositAmount = total * (depositVal / 100);
-      } else if (depositType === 'fixed' && depositVal > 0) {
-        depositAmount = depositVal;
-      }
+      if (depositType === 'percentage' && depositVal > 0) depositAmount = total * (depositVal / 100);
+      else if (depositType === 'fixed' && depositVal > 0) depositAmount = depositVal;
 
-      const cc = quote.currency ?? identity?.default_currency ?? 'GBP';
-
-      const totalRows: Array<{ label: string; value: string; bold?: boolean }> = [
-        { label: 'Subtotal', value: fmtCur(subtotal, cc) },
+      const totalsRows: Array<{ label: string; value: string; bold?: boolean }> = [
+        { label: 'Subtotal', value: fmtMoney(subtotal, cc) },
       ];
       if (discountAmount > 0) {
-        const discLabel = discountType === 'percentage'
-          ? `Discount (${discountVal}%)`
-          : 'Discount';
-        totalRows.push({ label: discLabel, value: `−${fmtCur(discountAmount, cc)}` });
+        const discLabel = discountType === 'percentage' ? `Discount (${discountVal}%)` : 'Discount';
+        totalsRows.push({ label: discLabel, value: `-${fmtMoney(discountAmount, cc)}` });
       }
-      if (vat > 0) {
-        totalRows.push({ label: `VAT (${vatRate}%)`, value: fmtCur(vat, cc) });
-      }
-      totalRows.push({ label: 'Total', value: fmtCur(total, cc), bold: true });
-      // Deposit on quote = requested, never "paid"
+      if (vat > 0) totalsRows.push({ label: `VAT (${vatRate}%)`, value: fmtMoney(vat, cc) });
+      totalsRows.push({ label: 'Total', value: fmtMoney(total, cc), bold: true });
       if (depositAmount > 0) {
-        totalRows.push({ label: 'Deposit required', value: fmtCur(depositAmount, cc) });
-        totalRows.push({ label: 'Balance on completion', value: fmtCur(total - depositAmount, cc), bold: true });
+        totalsRows.push({ label: 'Deposit required', value: fmtMoney(depositAmount, cc) });
+        totalsRows.push({ label: 'Balance on completion', value: fmtMoney(total - depositAmount, cc), bold: true });
       }
 
-      y = drawTotalsBox(doc, y, totalRows);
+      const tableItems = items.map((it) => ({
+        description: it.custom_description || 'Service',
+        unit: 'Item',
+        qty: it.quantity,
+        price: it.unit_price,
+        total: it.quantity * it.unit_price,
+      }));
 
-      // ─── Notes section ───────────────────────────────────────
-      if (quote.notes) {
-        y = drawNotesSection(doc, y, quote.notes);
-      }
-
-      // ─── Footer + Watermark on all pages ─────────────────────
-      const pages = doc.bufferedPageRange();
-      for (let i = 0; i < pages.count; i++) {
-        doc.switchToPage(i);
-        if (includeWatermark) drawWatermark(doc);
-        drawFooterBar(doc, identity);
-        drawPageNumber(doc, i + 1);
-      }
+      renderPdfBody(doc, {
+        identity,
+        docType: 'QUOTE',
+        isProUser,
+        fallbackTitle: 'QUOTE',
+        client: {
+          name: client?.name ?? null,
+          address: addressLines.join('\n'),
+          phone: client?.phone ?? null,
+          email: client?.email ?? null,
+        },
+        infoRows,
+        headerNotes: quote.notes ?? null,
+        items: tableItems,
+        totalsRows,
+        bottomNotes: quote.terms_and_conditions ?? null,
+        currencyCode: cc,
+      });
 
       doc.end();
     } catch (error) {

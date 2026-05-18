@@ -5,21 +5,20 @@ import { Invoice, InvoiceItem } from '@/types/invoices';
 import { Client } from '@/types/quotes';
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations';
 import { persistDocumentAndLog, type ResolvedUser } from '@/lib/workspace-data';
-import { formatCurrency as fmtCur } from '@/lib/currency';
+import { isPro, normalizePlanTier } from '@/lib/plans';
 import {
   loadPdfIdentityByBusiness,
   loadPdfIdentityByUser,
-  drawBrandedHeader,
-  drawInfoBox,
-  drawClientSection,
-  drawItemsTable,
-  drawTotalsBox,
-  drawNotesSection,
-  drawFooterBar,
-  drawPageNumber,
-  drawWatermark,
+  renderPdfBody,
   type PdfIdentity,
 } from '@/lib/pdf/branding';
+
+// Contract §13: money format `{symbol}{value:.2f}` — NO thousands separator.
+const SYMBOLS: Record<string, string> = { GBP: '£', EUR: '€', USD: '$' };
+function fmtMoney(value: number, code?: string | null): string {
+  const c = (code ?? 'GBP').toUpperCase();
+  return `${SYMBOLS[c] ?? c}${value.toFixed(2)}`;
+}
 
 /**
  * GET /api/invoices/:id/pdf
@@ -111,18 +110,18 @@ export async function GET(
     const identity = await loadPdfIdentityByBusiness(invoice.business_id)
       ?? await loadPdfIdentityByUser(user.id);
 
-    // Check watermark flag
-    const includeWatermark = (invoice as any).includeWatermark === true;
+    // Plan gating: Pro+ shows logo, non-Pro shows horizontal watermark (contract §1.1)
+    const planTier = (business as any)?.plan_tier ?? null;
+    const isProUser = isPro(normalizePlanTier(planTier));
 
-    // Generate PDF
+    // Generate PDF via contract-pure renderer
     const pdfBuffer = await generateInvoicePDF({
       invoice: invoice as Invoice,
       client: client as Client,
-      business: business as any,
       items: items as InvoiceItem[],
       payments: payments || [],
       identity,
-      includeWatermark,
+      isProUser,
     });
 
     // Persist document metadata + history event (fire-and-forget)
@@ -175,123 +174,100 @@ export async function GET(
 }
 
 /**
- * Generate branded PDF document for an invoice.
- * Matches the mobile app layout: logo + title, info box, client, items table,
- * subtotal/total, notes, contact+payment footer bar.
+ * Generate branded PDF document for an invoice via contract-pure renderPdfBody().
+ * Behavioural port of Android PdfGenerator.kt v3.11.0.
  */
 async function generateInvoicePDF(data: {
   invoice: Invoice;
   client: Client;
-  business: any;
   items: InvoiceItem[];
   payments: any[];
   identity: PdfIdentity | null;
-  includeWatermark: boolean;
+  isProUser: boolean;
 }): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     try {
-      const { invoice, client, items, payments, identity, includeWatermark } = data;
-      const doc = new PDFDocument({
-        size: 'A4',
-        margin: 40,
-        bufferPages: true,
-      });
+      const { invoice, client, items, payments, identity, isProUser } = data;
+      const doc = new PDFDocument({ size: 'A4', margin: 0, autoFirstPage: true });
 
       const buffers: Buffer[] = [];
       doc.on('data', (chunk: Buffer) => buffers.push(chunk));
       doc.on('end', () => resolve(Buffer.concat(buffers)));
+      doc.on('error', (e: any) => reject(e));
 
-      // ─── Header: logo + INVOICE title ────────────────────────
-      let y = drawBrandedHeader(doc, identity, 'INVOICE');
-
-      // ─── Client "To" section (left) + Info box (right) ───────
       const fmtDate = (d: string | null) =>
         d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
 
+      const cc = invoice.currency ?? identity?.default_currency ?? 'GBP';
+
+      // Info box rows — contract §10.1 (Status is NOT a contract field)
       const infoRows = [
         { label: 'Date', value: fmtDate(invoice.issue_date) },
-        { label: 'Ref No', value: invoice.invoice_number },
+        { label: 'Ref No', value: invoice.invoice_number ?? '—' },
         { label: 'Client Ref', value: (client as any)?.reference || '—' },
         { label: 'Email', value: client?.email || '—' },
         { label: 'Client Phone Number', value: client?.phone || '—' },
       ];
-      if (invoice.notes) {
-        infoRows.push({ label: 'Notes', value: invoice.notes.slice(0, 120) });
-      }
 
-      const infoBoxBottom = drawInfoBox(doc, y, infoRows);
-
-      // Client section (left)
-      const address = [
+      // Client "To:" block
+      const addressLines = [
+        client?.company_name,
         client?.address_line_1,
         client?.address_line_2,
         [client?.city, client?.postcode].filter(Boolean).join(' '),
-      ].filter(Boolean).join('\n');
+        client?.country,
+      ].filter(Boolean) as string[];
 
-      drawClientSection(doc, y, {
-        name: client?.name ?? undefined,
-        company: client?.company_name ?? undefined,
-        address,
-        phone: client?.phone ?? undefined,
-        email: client?.email ?? undefined,
-      });
-
-      y = Math.max(infoBoxBottom, y + 100) + 15;
-
-      // ─── Line items table ────────────────────────────────────
-      const tableItems = items.map((item) => ({
-        description: item.description || 'Line Item',
-        unit: 'Item',
-        qty: item.qty,
-        price: item.unit_price,
-        total: item.qty * item.unit_price,
-      }));
-
-      y = drawItemsTable(doc, y, tableItems, identity?.brand_color || '#1e40af', invoice.currency);
-      y += 10;
-
-      // ─── Totals box ─────────────────────────────────────────
-      // Phase G1: pass discount_total so subtotal/VAT/total account for it
+      // Totals — contract §5
       const totals = calculateInvoiceTotals(
         items.map((i) => ({ qty: i.qty, unit_price: i.unit_price, vat_rate: i.vat_rate })),
-        invoice.discount_total ?? 0
+        invoice.discount_total ?? 0,
       );
-
-      const amountPaid = payments.reduce((sum: number, p: any) => sum + p.amount, 0);
+      const amountPaid = payments.reduce((sum: number, p: any) => sum + (p.amount ?? 0), 0);
       const balanceDue = totals.total - amountPaid;
-      const cc = invoice.currency ?? identity?.default_currency ?? 'GBP';
 
-      const totalRows: Array<{ label: string; value: string; bold?: boolean }> = [
-        { label: 'Subtotal', value: fmtCur(totals.subtotal, cc) },
+      const totalsRows: Array<{ label: string; value: string; bold?: boolean }> = [
+        { label: 'Subtotal', value: fmtMoney(totals.subtotal, cc) },
       ];
-      if (totals.discount_total > 0) {
-        totalRows.push({ label: 'Discount', value: `−${fmtCur(totals.discount_total, cc)}` });
+      if ((totals.discount_total ?? 0) > 0) {
+        totalsRows.push({ label: 'Discount', value: `-${fmtMoney(totals.discount_total, cc)}` });
       }
-      if (totals.vat_total > 0) {
-        totalRows.push({ label: 'VAT', value: fmtCur(totals.vat_total, cc) });
+      if ((totals.vat_total ?? 0) > 0) {
+        totalsRows.push({ label: 'VAT', value: fmtMoney(totals.vat_total, cc) });
       }
-      totalRows.push({ label: 'Total', value: fmtCur(totals.total, cc), bold: true });
-
+      totalsRows.push({ label: 'Total', value: fmtMoney(totals.total, cc), bold: true });
       if (amountPaid > 0) {
-        totalRows.push({ label: 'Amount Paid', value: fmtCur(amountPaid, cc) });
-        totalRows.push({ label: 'Balance Due', value: fmtCur(Math.max(0, balanceDue), cc), bold: true });
+        totalsRows.push({ label: 'Amount Paid', value: fmtMoney(amountPaid, cc) });
+        totalsRows.push({ label: 'Balance Due', value: fmtMoney(Math.max(0, balanceDue), cc), bold: true });
       }
 
-      y = drawTotalsBox(doc, y, totalRows);
+      // Items — contract §4
+      const tableItems = items.map((it) => ({
+        description: it.description || 'Service',
+        unit: 'Item',
+        qty: it.qty,
+        price: it.unit_price,
+        total: it.qty * it.unit_price,
+      }));
 
-      // ─── Notes section ───────────────────────────────────────
-      if (invoice.notes) {
-        y = drawNotesSection(doc, y, invoice.notes);
-      }
-
-      // ─── Footer + Watermark on all pages ─────────────────────
-      const pages = doc.bufferedPageRange();
-      for (let i = 0; i < pages.count; i++) {
-        doc.switchToPage(i);
-        if (includeWatermark) drawWatermark(doc);
-        drawFooterBar(doc, identity);
-        drawPageNumber(doc, i + 1);
-      }
+      renderPdfBody(doc, {
+        identity,
+        docType: 'INVOICE',
+        isProUser,
+        fallbackTitle: 'INVOICE',
+        client: {
+          name: client?.name ?? null,
+          address: addressLines.join('\n'),
+          phone: client?.phone ?? null,
+          email: client?.email ?? null,
+        },
+        infoRows,
+        headerNotes: invoice.notes ?? null,
+        items: tableItems,
+        totalsRows,
+        bottomNotes: invoice.terms ?? null,
+        currencyCode: cc,
+      });
 
       doc.end();
     } catch (error) {
