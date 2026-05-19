@@ -1,4 +1,4 @@
-// src/app/api/workspace/documents/[id]/pdf/route.ts v2.0
+// src/app/api/workspace/documents/[id]/pdf/route.ts v2.1
 //
 // GET /api/workspace/documents/:id/pdf
 //
@@ -16,6 +16,18 @@
 //   All rendering delegated to `renderPdfBody()` which encapsulates the exact
 //   contract: continuation-page header repeat, totals/notes overflow, footer
 //   on every page, contract-spec measurements + typography.
+// - v2.1 (2026-05-18): TOOL-AWARE RENDERING — Flooring fix.
+//   When doc.linked_entity_id resolves to a lead/job that has a flooring
+//   tool attachment, the route now:
+//     1. Fetches tool_key, raw_payload, values_text from tool_attachments.
+//     2. Re-extracts items from rawPayload via extractFlooringItems() —
+//        a TypeScript port of Android AttachmentContentExtractor
+//        extractFlooringPdfItems(), ensuring proper room names and sqm
+//        (no mm² scale issue, correct flooring-type label).
+//     3. Appends values_text as bottomNotes so the full semantic breakdown
+//        (FLOOR AREAS / FLOORING SUPPLY / SKIRTING & FINISHING / LABOUR)
+//        appears in the PDF's bottom NOTES box — matching Android output.
+//   Generic fallback (doc.items) is preserved for all other tool types.
 
 export const dynamic = 'force-dynamic';
 
@@ -94,6 +106,129 @@ function fmtMoney(value: number, code?: string | null): string {
   return `${SYMBOLS[c] ?? c}${value.toFixed(2)}`;
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// FLOORING TOOL — TypeScript port of Android AttachmentContentExtractor
+// extractFlooringPdfItems() (v1.6.0)
+//
+// Source contract: FlooringScreen.kt buildRawPayload() schema
+//   rawPayload = {
+//     rooms: [{ name, length, width, sqm?, isVisibleToClient? }],
+//     flooringType: string,         // e.g. "lvt"
+//     costPerSqm: string,           // e.g. "22.0"
+//     items: [                      // tool-emitted non-room items
+//       { name, qty, price, unit, costBucket }  // qty and price are strings
+//     ]
+//   }
+//
+// The `items[]` entries for rooms follow the naming convention:
+//   "${roomName} (${flooringTypeLabel})"  — e.g. "Bedroom 1 (Vinyl / LVT)"
+//
+// Non-room items (always visible):
+//   "Waste allowance", "Underlay", "Skirting board", "Door threshold",
+//   "Scotia / trim", "Flooring adhesive", "Fitting", "Old floor uplift"
+//
+// This function EXACTLY mirrors Android's logic so item descriptions,
+// sqm values, and totals are identical to what Android generates.
+// ─────────────────────────────────────────────────────────────────────────────
+type PdfItem = { description: string; unit: string; qty: number; price: number; total: number };
+
+function cleanDisplayLabel(id: string): string {
+  // Mirror Android AttachmentContentExtractor.cleanDisplayLabel():
+  // Replace underscores with spaces, title-case each word.
+  return id
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function extractFlooringItems(rawPayload: string): PdfItem[] {
+  let json: Record<string, unknown>;
+  try {
+    json = JSON.parse(rawPayload) as Record<string, unknown>;
+  } catch {
+    return [];
+  }
+
+  const out: PdfItem[] = [];
+
+  // ── Step 1: Rooms section (Android: collapseSectionForClient on rooms[]) ──
+  // Per Android v1.6.0: sqm is read from items[] lookup (correct unit-converted
+  // values saved at buildRawPayload() time), NOT from rooms[].length/width
+  // (which are raw user-input in whatever unit the user had selected — directly
+  // multiplying them would give mm²-scale values for mm-input rooms).
+  const roomsArr = (json.rooms as unknown[]) ?? [];
+  const flooringTypeId = String(json.flooringType ?? '');
+  const flooringTypeLabel = flooringTypeId ? cleanDisplayLabel(flooringTypeId) : '';
+  const costPerSqm = parseFloat(String(json.costPerSqm ?? '0')) || 0;
+
+  // Build roomName → sqm lookup from items[] (Android v1.6.0 FIX)
+  const itemsArr = (json.items as unknown[]) ?? [];
+  const roomSqmFromItems = new Map<string, number>();
+  if (costPerSqm > 0 && flooringTypeLabel) {
+    const suffix = ` (${flooringTypeLabel})`;
+    for (const raw of itemsArr) {
+      const o = raw as Record<string, unknown>;
+      const itemName = String(o.name ?? '');
+      const unitField = String(o.unit ?? '');
+      const qty = parseFloat(String(o.qty ?? '0')) || 0;
+      if (unitField.toLowerCase() !== 'sqm' || qty <= 0) continue;
+      if (itemName.endsWith(suffix)) {
+        const roomName = itemName.slice(0, -suffix.length).trim();
+        if (roomName) roomSqmFromItems.set(roomName, qty);
+      }
+    }
+  }
+
+  if (costPerSqm > 0) {
+    for (const raw of roomsArr) {
+      const o = raw as Record<string, unknown>;
+      const name = String(o.name ?? 'Room') || 'Room';
+      const isVisible = o.isVisibleToClient !== false; // default true per Android contract
+      if (!isVisible) continue; // respect client-visibility flag (Phase 4B contract)
+
+      // Prefer sqm from items[] lookup; fall back to pre-computed sqm field (v3.8.1)
+      let sqm = roomSqmFromItems.get(name);
+      if (!sqm && typeof o.sqm === 'number' && (o.sqm as number) > 0) {
+        sqm = o.sqm as number;
+      }
+      if (!sqm || sqm <= 0) continue; // no valid sqm — skip (0-area room)
+
+      const description = flooringTypeLabel ? `${name} (${flooringTypeLabel})` : name;
+      out.push({
+        description,
+        unit: 'sqm',
+        qty: sqm,
+        price: costPerSqm,
+        total: Math.round(sqm * costPerSqm * 100) / 100,
+      });
+    }
+  }
+
+  // ── Step 2: Non-room items from items[] ──
+  // Skip per-room items (already emitted above). Android identifies them by
+  // matching the room suffix; we use the same approach.
+  const emittedDescriptions = new Set(out.map((i) => i.description));
+
+  for (const raw of itemsArr) {
+    const o = raw as Record<string, unknown>;
+    const name = String(o.name ?? '').trim();
+    if (!name) continue;
+    if (emittedDescriptions.has(name)) continue; // already emitted via rooms
+    const qty = parseFloat(String(o.qty ?? '1')) || 1;
+    const price = parseFloat(String(o.price ?? '0')) || 0;
+    if (qty <= 0 || price <= 0) continue;
+    const unit = String(o.unit ?? 'Item') || 'Item';
+    out.push({
+      description: cleanDisplayLabel(name),
+      unit,
+      qty,
+      price,
+      total: Math.round(qty * price * 100) / 100,
+    });
+  }
+
+  return out;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } },
@@ -155,9 +290,84 @@ export async function GET(
   const currency = doc.currency ?? identity?.default_currency ?? 'GBP';
   const docTypeLabel = normaliseDocType(doc.type);
 
-  // Normalise + dedupe items
-  const rawItems = Array.isArray(doc.items) ? (doc.items as Record<string, unknown>[]) : [];
-  const items = deduplicateItems(rawItems.map((it) => normaliseAreaItem(flexNormaliseItem(it))));
+  // ── Tool-awareness: query tool_attachments for the document's parent entity ──
+  //
+  // documents.linked_entity_id → lead/job UUID
+  // tool_attachments.parent_id = linked_entity_id, parent_type ILIKE 'LEAD'|'JOB'
+  //
+  // This is the ONLY path to tool_key, raw_payload, values_text — none of
+  // these fields exist on the documents table itself. Without this join, the
+  // renderer cannot detect the originating tool and always falls back to the
+  // generic flat-items interpretation (root cause of the flooring parity gap).
+  let toolKey: string | null = null;
+  let toolRawPayload: string | null = null;
+  let toolValuesText: string | null = null;
+
+  if (doc.linked_entity_id) {
+    const { data: toolAttachment } = await supabase
+      .from('tool_attachments')
+      .select('tool_key, raw_payload, values_text')
+      .eq('workspace_id', workspaceId ?? '')
+      .eq('parent_id', doc.linked_entity_id)
+      .not('tool_key', 'is', null)
+      .neq('tool_key', '')
+      .order('created_at_millis', { ascending: false })
+      .limit(1)
+      .maybeSingle<{ tool_key: string | null; raw_payload: string | null; values_text: string | null }>();
+
+    if (toolAttachment) {
+      toolKey       = toolAttachment.tool_key ?? null;
+      toolRawPayload = toolAttachment.raw_payload ?? null;
+      toolValuesText = toolAttachment.values_text ?? null;
+    }
+  }
+
+  // ── Item extraction: tool-aware (flooring) or generic (all others) ──
+  //
+  // For flooring: re-extract from rawPayload using the TypeScript port of
+  // Android AttachmentContentExtractor.extractFlooringPdfItems() (v1.6.0).
+  // This ensures:
+  //   • Room names carry the flooring-type label: "Bedroom 1 (Vinyl / LVT)"
+  //   • Sqm comes from items[].qty (unit-converted at save time) — NOT from
+  //     rooms[].length × rooms[].width (which are raw mm/cm user inputs)
+  //   • Client-visibility flags (isVisibleToClient=false) are respected
+  //   • All non-room items (Waste allowance, Skirting, Fitting etc.) are
+  //     preserved with their original names
+  //
+  // Generic fallback: reads doc.items (Android-exported DocumentLineItem[]).
+  let items: PdfItem[];
+  if (toolKey === 'flooring' && toolRawPayload) {
+    const extracted = extractFlooringItems(toolRawPayload);
+    // Fall back to doc.items if extraction produced nothing (malformed payload)
+    items = extracted.length > 0
+      ? deduplicateItems(extracted)
+      : deduplicateItems(
+          (Array.isArray(doc.items) ? (doc.items as Record<string, unknown>[]) : [])
+            .map((it) => normaliseAreaItem(flexNormaliseItem(it))),
+        );
+  } else {
+    const rawItems = Array.isArray(doc.items) ? (doc.items as Record<string, unknown>[]) : [];
+    items = deduplicateItems(rawItems.map((it) => normaliseAreaItem(flexNormaliseItem(it))));
+  }
+
+  // ── bottomNotes: for flooring, prepend the values_text breakdown ──
+  //
+  // values_text (from tool_attachments) is the full semantic breakdown
+  // Android builds in buildValuesText():
+  //   "TISSCA – FLOORING\n\nFLOOR AREAS\n• Bedroom 1 | ... = X sqm\n..."
+  //
+  // Android's PDF bottom notes = attachment.userNotes (user's manual notes),
+  // NOT the values_text breakdown. The website mirrors this: user notes from
+  // documents.footer_notes are shown first; the semantic breakdown follows.
+  //
+  // For non-flooring tools, bottomNotes = doc.footer_notes as before.
+  let bottomNotes: string | null = doc.footer_notes ?? null;
+  if (toolKey === 'flooring' && toolValuesText?.trim()) {
+    const cleanBreakdown = toolValuesText.trim();
+    bottomNotes = bottomNotes
+      ? `${bottomNotes}\n\n${cleanBreakdown}`
+      : cleanBreakdown;
+  }
 
   // Recalculate subtotal from normalised items (doc.subtotal may pre-date normalisation)
   const itemsSum = items.reduce((s, i) => s + i.total, 0);
@@ -213,7 +423,7 @@ export async function GET(
       headerNotes: doc.header_notes ?? null,
       items,
       totalsRows,
-      bottomNotes: doc.footer_notes ?? null,
+      bottomNotes,
       currencyCode: currency,
     });
 
