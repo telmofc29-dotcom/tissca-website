@@ -171,20 +171,22 @@ export async function GET(req: NextRequest) {
         .limit(500);
 
       if (recent && recent.length > 0) {
-        const leadIds = recent.filter(r => r.parent_type === 'LEAD').map(r => r.parent_id);
-        const jobIds = recent.filter(r => r.parent_type === 'JOB').map(r => r.parent_id);
+        const leadParentIds = recent.filter(r => r.parent_type === 'LEAD').map(r => r.parent_id);
+        const jobParentIds = recent.filter(r => r.parent_type === 'JOB').map(r => r.parent_id);
 
+        // tool_attachments.parent_id stores client_record_id (mobile-generated UUID),
+        // NOT leads.id / jobs.id (Postgres PKs). Match on client_record_id.
         const [{ data: foundLeads }, { data: foundJobs }] = await Promise.all([
-          leadIds.length
-            ? supabase.from('leads').select('id').in('id', leadIds).eq('workspace_id', workspaceId)
-            : Promise.resolve({ data: [] as { id: string }[] }),
-          jobIds.length
-            ? supabase.from('jobs').select('id').in('id', jobIds).eq('workspace_id', workspaceId)
-            : Promise.resolve({ data: [] as { id: string }[] }),
+          leadParentIds.length
+            ? supabase.from('leads').select('client_record_id').in('client_record_id', leadParentIds).eq('workspace_id', workspaceId)
+            : Promise.resolve({ data: [] as { client_record_id: string }[] }),
+          jobParentIds.length
+            ? supabase.from('jobs').select('client_record_id').in('client_record_id', jobParentIds).eq('workspace_id', workspaceId)
+            : Promise.resolve({ data: [] as { client_record_id: string }[] }),
         ]);
 
-        const foundLeadSet = new Set((foundLeads ?? []).map(r => r.id));
-        const foundJobSet = new Set((foundJobs ?? []).map(r => r.id));
+        const foundLeadSet = new Set((foundLeads ?? []).map(r => r.client_record_id).filter(Boolean));
+        const foundJobSet = new Set((foundJobs ?? []).map(r => r.client_record_id).filter(Boolean));
 
         parent_mismatch_count = recent.filter(r =>
           (r.parent_type === 'LEAD' && !foundLeadSet.has(r.parent_id)) ||

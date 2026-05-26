@@ -471,6 +471,8 @@ export type LeadRow = {
   bottom_pdf_notes: string | null;
   vat_percent: number | null;
   discount_amount: number | null;
+  discount_percent: number | null;
+  survey_date_millis: number | null;
 };
 
 export type JobRow = {
@@ -514,6 +516,8 @@ export type JobRow = {
   bottom_pdf_notes: string | null;
   vat_percent: number | null;
   discount_amount: number | null;
+  discount_percent: number | null;
+  survey_date_millis: number | null;
 };
 
 export type ChecklistItem = {
@@ -1140,6 +1144,7 @@ export type CreateLeadInput = {
   values_text?: string | null;
   client_id?: string | null;
   client_record_id?: string | null;
+  client_reference?: string | null;
   phone?: string | null;
   email?: string | null;
   address_text?: string | null;
@@ -1150,11 +1155,20 @@ export type CreateLeadInput = {
   location_text?: string | null;
   start_date_millis?: number | null;
   due_date_millis?: number | null;
+  survey_date_millis?: number | null;
   materials_delivery_date_millis?: number | null;
   deposit_amount?: number | null;
+  deposit_due_date_millis?: number | null;
+  deposit_sent_at_millis?: number | null;
+  deposit_paid_at_millis?: number | null;
   deposit_status?: string | null;
+  quote_amount?: number | null;
+  quote_status?: string | null;
+  quote_sent_at_millis?: number | null;
+  payment_due_date_millis?: number | null;
   vat_percent?: number | null;
   discount_amount?: number | null;
+  discount_percent?: number | null;
   top_pdf_notes?: string | null;
   bottom_pdf_notes?: string | null;
   start_time_hour?: number | null;
@@ -1168,11 +1182,13 @@ export type CreateJobInput = {
   lead_id?: string | null;
   client_id?: string | null;
   client_record_id?: string | null;
+  client_reference?: string | null;
   status?: string;
   job_type?: string | null;
   source_tool_key?: string | null;
   start_date_millis?: number | null;
   due_date_millis?: number | null;
+  survey_date_millis?: number | null;
   job_value?: number | null;
   notes?: string | null;
   user_notes?: string | null;
@@ -1190,8 +1206,10 @@ export type CreateJobInput = {
   deposit_status?: string | null;
   deposit_paid_amount?: number | null;
   payment_status?: string | null;
+  payment_due_date_millis?: number | null;
   vat_percent?: number | null;
   discount_amount?: number | null;
+  discount_percent?: number | null;
   top_pdf_notes?: string | null;
   bottom_pdf_notes?: string | null;
   start_time_hour?: number | null;
@@ -1460,7 +1478,11 @@ export async function createLead(
       user_notes: input.user_notes ?? null,
       values_text: input.values_text ?? null,
       client_id: input.client_id ?? null,
-      client_record_id: input.client_record_id ?? null,
+      // Always generate client_record_id — cross-platform identity key.
+      // Android supplies its own; website-created leads generate one so
+      // tool_attachments.parent_id is consistent across platforms.
+      client_record_id: input.client_record_id ?? crypto.randomUUID(),
+      client_reference: input.client_reference ?? null,
       phone: input.phone ?? null,
       email: input.email ?? null,
       address_text: input.address_text ?? null,
@@ -1471,11 +1493,20 @@ export async function createLead(
       location_text: input.location_text ?? null,
       start_date_millis: input.start_date_millis ?? null,
       due_date_millis: input.due_date_millis ?? null,
+      survey_date_millis: input.survey_date_millis ?? null,
       materials_delivery_date_millis: input.materials_delivery_date_millis ?? null,
       deposit_amount: input.deposit_amount ?? null,
+      deposit_due_date_millis: input.deposit_due_date_millis ?? null,
+      deposit_sent_at_millis: input.deposit_sent_at_millis ?? null,
+      deposit_paid_at_millis: input.deposit_paid_at_millis ?? null,
       deposit_status: input.deposit_status ?? 'DRAFT',
+      quote_amount: input.quote_amount ?? null,
+      quote_status: input.quote_status ?? null,
+      quote_sent_at_millis: input.quote_sent_at_millis ?? null,
+      payment_due_date_millis: input.payment_due_date_millis ?? null,
       vat_percent: input.vat_percent ?? null,
       discount_amount: input.discount_amount ?? null,
+      discount_percent: input.discount_percent ?? null,
       top_pdf_notes: input.top_pdf_notes ?? null,
       bottom_pdf_notes: input.bottom_pdf_notes ?? null,
       start_time_hour: input.start_time_hour ?? null,
@@ -1524,6 +1555,7 @@ export async function updateLead(
   if (input.values_text !== undefined) updatePayload.values_text = input.values_text;
   if (input.client_id !== undefined) updatePayload.client_id = input.client_id;
   if (input.client_record_id !== undefined) updatePayload.client_record_id = input.client_record_id;
+  if (input.client_reference !== undefined) updatePayload.client_reference = input.client_reference;
   if (input.phone !== undefined) updatePayload.phone = input.phone;
   if (input.email !== undefined) updatePayload.email = input.email;
   if (input.address_text !== undefined) updatePayload.address_text = input.address_text;
@@ -1534,11 +1566,20 @@ export async function updateLead(
   if (input.location_text !== undefined) updatePayload.location_text = input.location_text;
   if (input.start_date_millis !== undefined) updatePayload.start_date_millis = input.start_date_millis;
   if (input.due_date_millis !== undefined) updatePayload.due_date_millis = input.due_date_millis;
+  if (input.survey_date_millis !== undefined) updatePayload.survey_date_millis = input.survey_date_millis;
   if (input.materials_delivery_date_millis !== undefined) updatePayload.materials_delivery_date_millis = input.materials_delivery_date_millis;
   if (input.deposit_amount !== undefined) updatePayload.deposit_amount = input.deposit_amount;
+  if (input.deposit_due_date_millis !== undefined) updatePayload.deposit_due_date_millis = input.deposit_due_date_millis;
+  if (input.deposit_sent_at_millis !== undefined) updatePayload.deposit_sent_at_millis = input.deposit_sent_at_millis;
+  if (input.deposit_paid_at_millis !== undefined) updatePayload.deposit_paid_at_millis = input.deposit_paid_at_millis;
   if (input.deposit_status !== undefined) updatePayload.deposit_status = input.deposit_status;
+  if (input.quote_amount !== undefined) updatePayload.quote_amount = input.quote_amount;
+  if (input.quote_status !== undefined) updatePayload.quote_status = input.quote_status;
+  if (input.quote_sent_at_millis !== undefined) updatePayload.quote_sent_at_millis = input.quote_sent_at_millis;
+  if (input.payment_due_date_millis !== undefined) updatePayload.payment_due_date_millis = input.payment_due_date_millis;
   if (input.vat_percent !== undefined) updatePayload.vat_percent = input.vat_percent;
   if (input.discount_amount !== undefined) updatePayload.discount_amount = input.discount_amount;
+  if (input.discount_percent !== undefined) updatePayload.discount_percent = input.discount_percent;
   if (input.top_pdf_notes !== undefined) updatePayload.top_pdf_notes = input.top_pdf_notes;
   if (input.bottom_pdf_notes !== undefined) updatePayload.bottom_pdf_notes = input.bottom_pdf_notes;
   if (input.start_time_hour !== undefined) updatePayload.start_time_hour = input.start_time_hour;
@@ -1563,6 +1604,7 @@ export async function updateLead(
 
 /**
  * Delete a lead. Validates ownership via workspace_id scope.
+ * Captures full entity snapshot before deletion for audit trail (matches deleteTask() pattern).
  */
 export async function deleteLead(
   resolved: ResolvedUser,
@@ -1574,6 +1616,15 @@ export async function deleteLead(
   }
 
   const supabase = createServerSupabaseClient();
+
+  // Capture snapshot before deletion for audit trail
+  const { data: existing } = await supabase
+    .from('leads')
+    .select('*')
+    .eq('id', leadId)
+    .eq('workspace_id', wsId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('leads')
     .delete()
@@ -1585,7 +1636,7 @@ export async function deleteLead(
     return { error: error.message };
   }
 
-  await logHistory(resolved, 'lead', leadId, 'deleted');
+  await logHistory(resolved, 'lead', leadId, 'deleted', existing ?? { id: leadId });
   return { error: null };
 }
 
@@ -1613,12 +1664,17 @@ export async function createJob(
       client_name: input.client_name,
       lead_id: input.lead_id ?? null,
       client_id: input.client_id ?? null,
-      client_record_id: input.client_record_id ?? null,
+      // Always generate client_record_id — it is the cross-platform identity key.
+      // Android devices supply their own; website-created jobs generate one here so
+      // tool_attachments.parent_id can be populated consistently.
+      client_record_id: input.client_record_id ?? crypto.randomUUID(),
+      client_reference: input.client_reference ?? null,
       status: input.status || 'SCHEDULED',
       job_type: input.job_type ?? null,
       source_tool_key: input.source_tool_key ?? null,
       start_date_millis: input.start_date_millis ?? null,
       due_date_millis: input.due_date_millis ?? null,
+      survey_date_millis: input.survey_date_millis ?? null,
       job_value: input.job_value ?? null,
       notes: input.notes ?? null,
       user_notes: input.user_notes ?? null,
@@ -1636,9 +1692,11 @@ export async function createJob(
       deposit_paid_amount: input.deposit_paid_amount ?? 0,
       deposit_status: input.deposit_status ?? 'DRAFT',
       payment_status: input.payment_status ?? 'NOT_REQUESTED',
+      payment_due_date_millis: input.payment_due_date_millis ?? null,
       amount_paid_so_far: 0,
       vat_percent: input.vat_percent ?? null,
       discount_amount: input.discount_amount ?? null,
+      discount_percent: input.discount_percent ?? null,
       top_pdf_notes: input.top_pdf_notes ?? null,
       bottom_pdf_notes: input.bottom_pdf_notes ?? null,
       start_time_hour: input.start_time_hour ?? null,
@@ -1678,11 +1736,13 @@ export async function updateJob(
   if (input.lead_id !== undefined) updatePayload.lead_id = input.lead_id;
   if (input.client_id !== undefined) updatePayload.client_id = input.client_id;
   if (input.client_record_id !== undefined) updatePayload.client_record_id = input.client_record_id;
+  if (input.client_reference !== undefined) updatePayload.client_reference = input.client_reference;
   if (input.status !== undefined) updatePayload.status = input.status;
   if (input.job_type !== undefined) updatePayload.job_type = input.job_type;
   if (input.source_tool_key !== undefined) updatePayload.source_tool_key = input.source_tool_key;
   if (input.start_date_millis !== undefined) updatePayload.start_date_millis = input.start_date_millis;
   if (input.due_date_millis !== undefined) updatePayload.due_date_millis = input.due_date_millis;
+  if (input.survey_date_millis !== undefined) updatePayload.survey_date_millis = input.survey_date_millis;
   if (input.job_value !== undefined) updatePayload.job_value = input.job_value;
   if (input.notes !== undefined) updatePayload.notes = input.notes;
   if (input.user_notes !== undefined) updatePayload.user_notes = input.user_notes;
@@ -1700,8 +1760,10 @@ export async function updateJob(
   if (input.deposit_paid_amount !== undefined) updatePayload.deposit_paid_amount = input.deposit_paid_amount;
   if (input.deposit_status !== undefined) updatePayload.deposit_status = input.deposit_status;
   if (input.payment_status !== undefined) updatePayload.payment_status = input.payment_status;
+  if (input.payment_due_date_millis !== undefined) updatePayload.payment_due_date_millis = input.payment_due_date_millis;
   if (input.vat_percent !== undefined) updatePayload.vat_percent = input.vat_percent;
   if (input.discount_amount !== undefined) updatePayload.discount_amount = input.discount_amount;
+  if (input.discount_percent !== undefined) updatePayload.discount_percent = input.discount_percent;
   if (input.top_pdf_notes !== undefined) updatePayload.top_pdf_notes = input.top_pdf_notes;
   if (input.bottom_pdf_notes !== undefined) updatePayload.bottom_pdf_notes = input.bottom_pdf_notes;
   if (input.start_time_hour !== undefined) updatePayload.start_time_hour = input.start_time_hour;
@@ -1726,6 +1788,7 @@ export async function updateJob(
 
 /**
  * Delete a job. Validates ownership via workspace_id scope.
+ * Captures full entity snapshot before deletion for audit trail (matches deleteTask() pattern).
  */
 export async function deleteJob(
   resolved: ResolvedUser,
@@ -1737,6 +1800,15 @@ export async function deleteJob(
   }
 
   const supabase = createServerSupabaseClient();
+
+  // Capture snapshot before deletion for audit trail
+  const { data: existing } = await supabase
+    .from('jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('workspace_id', wsId)
+    .maybeSingle();
+
   const { error } = await supabase
     .from('jobs')
     .delete()
@@ -1748,7 +1820,7 @@ export async function deleteJob(
     return { error: error.message };
   }
 
-  await logHistory(resolved, 'job', jobId, 'deleted');
+  await logHistory(resolved, 'job', jobId, 'deleted', existing ?? { id: jobId });
   return { error: null };
 }
 
@@ -2043,27 +2115,34 @@ export async function updateToolAttachment(
 /**
  * Reassign all tool attachments from a lead to a job.
  * Used during Lead → Job conversion to maintain data chain continuity.
- * Tool attachments get parent_type=JOB, parent_id=jobId. Old parent_id kept via client_record_id if needed.
+ *
+ * IMPORTANT: tool_attachments.parent_id stores client_record_id (mobile-generated UUID),
+ * NOT leads.id / jobs.id (Postgres PKs). Both params must be client_record_id values.
+ * Supabase proof (2025-07): parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
  */
 export async function reassignToolAttachmentsToJob(
   resolved: ResolvedUser,
-  leadId: string,
-  jobId: string,
+  leadClientRecordId: string,
+  jobClientRecordId: string,
 ): Promise<{ count: number; error: string | null }> {
   const wsId = resolved.workspaceId ?? resolved.businessId;
   if (!wsId) {
     return { count: 0, error: 'No workspace found.' };
   }
 
+  if (!leadClientRecordId || !jobClientRecordId) {
+    return { count: 0, error: 'Both leadClientRecordId and jobClientRecordId are required.' };
+  }
+
   const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from('tool_attachments')
     .update({
-      parent_id: jobId,
+      parent_id: jobClientRecordId,
       parent_type: 'JOB',
       updated_at_millis: Date.now(),
     })
-    .eq('parent_id', leadId)
+    .eq('parent_id', leadClientRecordId)
     .eq('parent_type', 'LEAD')
     .eq('workspace_id', wsId)
     .select('id');
@@ -2077,8 +2156,58 @@ export async function reassignToolAttachmentsToJob(
 }
 
 /**
+ * Look up a lead's Postgres UUID (leads.id) by its mobile identity (client_record_id).
+ * Required for total recalculation after tool attachment mutations: sumToolAttachmentTotals
+ * accepts client_record_id as entityId, but updateLead expects leads.id.
+ */
+export async function lookupLeadByClientRecordId(
+  resolved: ResolvedUser,
+  clientRecordId: string,
+): Promise<string | null> {
+  const wsId = resolved.workspaceId ?? resolved.businessId;
+  if (!wsId || !clientRecordId) return null;
+
+  const supabase = createServerSupabaseClient();
+  const { data } = await supabase
+    .from('leads')
+    .select('id')
+    .eq('client_record_id', clientRecordId)
+    .eq('workspace_id', wsId)
+    .maybeSingle();
+
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/**
+ * Look up a job's Postgres UUID (jobs.id) by its mobile identity (client_record_id).
+ * Required for total recalculation after tool attachment mutations: sumToolAttachmentTotals
+ * accepts client_record_id as entityId, but updateJob expects jobs.id.
+ */
+export async function lookupJobByClientRecordId(
+  resolved: ResolvedUser,
+  clientRecordId: string,
+): Promise<string | null> {
+  const wsId = resolved.workspaceId ?? resolved.businessId;
+  if (!wsId || !clientRecordId) return null;
+
+  const supabase = createServerSupabaseClient();
+  const { data } = await supabase
+    .from('jobs')
+    .select('id')
+    .eq('client_record_id', clientRecordId)
+    .eq('workspace_id', wsId)
+    .maybeSingle();
+
+  return (data as { id: string } | null)?.id ?? null;
+}
+
+/**
  * Recalculate totals for a lead or job from its attached tools.
  * Returns the aggregate subtotal of all attached tool payloads.
+ *
+ * IMPORTANT: entityId must be the entity's client_record_id (mobile-generated UUID),
+ * NOT the Postgres PK (leads.id / jobs.id). tool_attachments.parent_id stores
+ * client_record_id per the Android contract.
  */
 export async function sumToolAttachmentTotals(
   resolved: ResolvedUser,

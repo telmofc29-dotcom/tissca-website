@@ -37,6 +37,7 @@ import { useBusinessNotifications } from '@/hooks/useBusinessNotifications';
 import { BusinessNotificationPanel } from '@/components/BusinessNotificationPanel';
 import { normalizePlanTier, formatPlanLabel, hasTissChatAccess, isPro } from '@/lib/plans';
 import { isAccountantHubRoleAllowed } from '@/lib/accountant-hub-shared';
+import FeedbackButton from '@/components/FeedbackButton';
 
 type MemberAppLayoutProps = {
   children: ReactNode;
@@ -265,6 +266,7 @@ export default function MemberAppLayout({ children }: MemberAppLayoutProps) {
       </div>
       <FloatingChatLauncher isTeamTier={teamTier} chatUnread={chatUnread} />
       <FloatingChatPanel />
+      <FeedbackButton />
     </div>
     </FloatingChatProvider>
   );

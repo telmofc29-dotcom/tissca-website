@@ -19,9 +19,15 @@ export function ContactFormSection() {
     setState('sending');
 
     try {
-      // POST to API route — implement /api/contact when backend is ready.
-      // For now, simulate success after a short delay.
-      await new Promise((resolve) => setTimeout(resolve, 800));
+      const res = await fetch('/api/contact', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, email, message }),
+      });
+      if (!res.ok) {
+        setState('error');
+        return;
+      }
       setState('sent');
       setName('');
       setEmail('');

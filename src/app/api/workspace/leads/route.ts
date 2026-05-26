@@ -1,4 +1,4 @@
-// src/app/api/workspace/leads/route.ts v4.0
+// src/app/api/workspace/leads/route.ts v4.1
 //
 // GET    /api/workspace/leads         — list leads (workspace_id scoped)
 // POST   /api/workspace/leads         — create a new lead
@@ -77,6 +77,7 @@ export async function POST(req: NextRequest) {
       values_text: body.values_text ?? null,
       client_id: body.client_id || null,
       client_record_id: body.client_record_id ?? null,
+      client_reference: body.client_reference ?? null,
       phone: body.phone ?? null,
       email: body.email ?? null,
       address_text: body.address_text ?? null,
@@ -87,11 +88,20 @@ export async function POST(req: NextRequest) {
       location_text: body.location_text ?? null,
       start_date_millis: body.start_date_millis != null ? Number(body.start_date_millis) : null,
       due_date_millis: body.due_date_millis != null ? Number(body.due_date_millis) : null,
+      survey_date_millis: body.survey_date_millis != null ? Number(body.survey_date_millis) : null,
       materials_delivery_date_millis: body.materials_delivery_date_millis != null ? Number(body.materials_delivery_date_millis) : null,
       deposit_amount: body.deposit_amount != null ? Number(body.deposit_amount) : null,
+      deposit_due_date_millis: body.deposit_due_date_millis != null ? Number(body.deposit_due_date_millis) : null,
+      deposit_sent_at_millis: body.deposit_sent_at_millis != null ? Number(body.deposit_sent_at_millis) : null,
+      deposit_paid_at_millis: body.deposit_paid_at_millis != null ? Number(body.deposit_paid_at_millis) : null,
       deposit_status: body.deposit_status ?? null,
+      quote_amount: body.quote_amount != null ? Number(body.quote_amount) : null,
+      quote_status: body.quote_status ?? null,
+      quote_sent_at_millis: body.quote_sent_at_millis != null ? Number(body.quote_sent_at_millis) : null,
+      payment_due_date_millis: body.payment_due_date_millis != null ? Number(body.payment_due_date_millis) : null,
       vat_percent: body.vat_percent != null ? Number(body.vat_percent) : null,
       discount_amount: body.discount_amount != null ? Number(body.discount_amount) : null,
+      discount_percent: body.discount_percent != null ? Number(body.discount_percent) : null,
       top_pdf_notes: body.top_pdf_notes ?? null,
       bottom_pdf_notes: body.bottom_pdf_notes ?? null,
       start_time_hour: body.start_time_hour != null ? Number(body.start_time_hour) : null,
@@ -157,6 +167,7 @@ export async function PATCH(req: NextRequest) {
     if (fields.values_text !== undefined) input.values_text = fields.values_text;
     if (fields.client_id !== undefined) input.client_id = fields.client_id || null;
     if (fields.client_record_id !== undefined) input.client_record_id = fields.client_record_id;
+    if (fields.client_reference !== undefined) input.client_reference = fields.client_reference;
     if (fields.phone !== undefined) input.phone = fields.phone;
     if (fields.email !== undefined) input.email = fields.email;
     if (fields.address_text !== undefined) input.address_text = fields.address_text;
@@ -167,11 +178,20 @@ export async function PATCH(req: NextRequest) {
     if (fields.location_text !== undefined) input.location_text = fields.location_text;
     if (fields.start_date_millis !== undefined) input.start_date_millis = fields.start_date_millis;
     if (fields.due_date_millis !== undefined) input.due_date_millis = fields.due_date_millis;
+    if (fields.survey_date_millis !== undefined) input.survey_date_millis = fields.survey_date_millis;
     if (fields.materials_delivery_date_millis !== undefined) input.materials_delivery_date_millis = fields.materials_delivery_date_millis;
     if (fields.deposit_amount !== undefined) input.deposit_amount = fields.deposit_amount;
+    if (fields.deposit_due_date_millis !== undefined) input.deposit_due_date_millis = fields.deposit_due_date_millis;
+    if (fields.deposit_sent_at_millis !== undefined) input.deposit_sent_at_millis = fields.deposit_sent_at_millis;
+    if (fields.deposit_paid_at_millis !== undefined) input.deposit_paid_at_millis = fields.deposit_paid_at_millis;
     if (fields.deposit_status !== undefined) input.deposit_status = fields.deposit_status;
+    if (fields.quote_amount !== undefined) input.quote_amount = fields.quote_amount;
+    if (fields.quote_status !== undefined) input.quote_status = fields.quote_status;
+    if (fields.quote_sent_at_millis !== undefined) input.quote_sent_at_millis = fields.quote_sent_at_millis;
+    if (fields.payment_due_date_millis !== undefined) input.payment_due_date_millis = fields.payment_due_date_millis;
     if (fields.vat_percent !== undefined) input.vat_percent = fields.vat_percent;
     if (fields.discount_amount !== undefined) input.discount_amount = fields.discount_amount;
+    if (fields.discount_percent !== undefined) input.discount_percent = fields.discount_percent;
     if (fields.top_pdf_notes !== undefined) input.top_pdf_notes = fields.top_pdf_notes;
     if (fields.bottom_pdf_notes !== undefined) input.bottom_pdf_notes = fields.bottom_pdf_notes;
     if (fields.start_time_hour !== undefined) input.start_time_hour = fields.start_time_hour;

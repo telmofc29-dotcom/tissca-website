@@ -39,8 +39,11 @@ type Lead = {
   follow_up_date: string | null;
   notes: string | null;
   client_id: string | null;
-  created_at: string;
-  updated_at: string;
+  // cross-platform identity key — tool_attachments.parent_id stores this value
+  client_record_id: string | null;
+  // leads has no created_at / updated_at ISO columns — use millis fields
+  created_at_millis: number | null;
+  updated_at_millis: number | null;
 };
 
 /** Client record from the Supabase-native clients table. */
@@ -665,7 +668,7 @@ export default function AppLeadsPage() {
                     <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-slate-500">
                       {lead.source && <span>Source: {lead.source}</span>}
                       {lead.follow_up_date && <span>Follow-up: {formatDate(lead.follow_up_date)}</span>}
-                      <span>Updated {formatDate(lead.updated_at)}</span>
+                      {(lead.updated_at_millis ?? 0) > 0 && <span>Updated {new Date(lead.updated_at_millis!).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}</span>}
                     </div>
                     {lead.notes && (
                       <p className="mt-1 text-sm text-slate-600 line-clamp-1">{lead.notes}</p>
@@ -729,7 +732,9 @@ export default function AppLeadsPage() {
 
             {/* Tool attachments linked to this lead */}
             {(() => {
-              const leadAttachments = toolAttachments.filter((a) => a.parent_id === editingLead.id);
+              const leadAttachments = toolAttachments.filter((a) => a.parent_id === editingLead.client_record_id);
+              // Note: client_record_id may be null for website-only leads created before this fix.
+              // Those leads will show no tool attachments here until their client_record_id is populated.
               if (leadAttachments.length === 0) return null;
               return (
                 <div className="mb-4 pb-4 border-b border-gray-100">

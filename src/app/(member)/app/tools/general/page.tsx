@@ -70,8 +70,8 @@ type GeneralToolDraft = {
 };
 
 /** Minimal lead/job shape from API (for picker). */
-type PickerLead = { id: string; client_name: string | null; status: string; estimated_value: number | null };
-type PickerJob = { id: string; client_name: string | null; status: string; job_value: number | null };
+type PickerLead = { id: string; client_name: string | null; status: string; estimated_value: number | null; client_record_id: string | null };
+type PickerJob = { id: string; client_name: string | null; status: string; job_value: number | null; client_record_id: string | null };
 
 type SuccessInfo = {
   type: 'new_lead' | 'add_to_lead' | 'add_to_job' | 'update';
@@ -580,6 +580,7 @@ function GeneralToolContent() {
           client_name: l.client_name as string | null,
           status: l.status as string,
           estimated_value: l.estimated_value as number | null,
+          client_record_id: l.client_record_id as string | null,
         })),
       );
       setPickerMode('lead');
@@ -594,7 +595,9 @@ function GeneralToolContent() {
     setGenerating(true);
     setError(null);
     try {
-      const ok = await createAttachment({ parent_id: lead.id, parent_type: 'LEAD' });
+      // Use client_record_id as parent_id — tool_attachments.parent_id stores client_record_id,
+      // NOT leads.id. Supabase proof: parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
+      const ok = await createAttachment({ parent_id: lead.client_record_id ?? lead.id, parent_type: 'LEAD' });
       if (!ok) throw new Error('Failed to attach estimate to lead.');
       clearDraft(TOOL_KEY);
       setPickerMode('none');
@@ -636,6 +639,7 @@ function GeneralToolContent() {
           client_name: j.client_name as string | null,
           status: j.status as string,
           job_value: j.job_value as number | null,
+          client_record_id: j.client_record_id as string | null,
         })),
       );
       setPickerMode('job');
@@ -650,7 +654,9 @@ function GeneralToolContent() {
     setGenerating(true);
     setError(null);
     try {
-      const ok = await createAttachment({ parent_id: job.id, parent_type: 'JOB' });
+      // Use client_record_id as parent_id — tool_attachments.parent_id stores client_record_id,
+      // NOT jobs.id. Supabase proof: parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
+      const ok = await createAttachment({ parent_id: job.client_record_id ?? job.id, parent_type: 'JOB' });
       if (!ok) throw new Error('Failed to attach estimate to job.');
       clearDraft(TOOL_KEY);
       setPickerMode('none');

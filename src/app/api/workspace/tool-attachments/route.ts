@@ -1,11 +1,13 @@
-// src/app/api/workspace/tool-attachments/route.ts v5.0
+// src/app/api/workspace/tool-attachments/route.ts v5.1
 //
-// GET   /api/workspace/tool-attachments — returns tool/calculator results
-// POST  /api/workspace/tool-attachments — creates a new tool attachment + recalculates parent totals
-// PATCH /api/workspace/tool-attachments — updates an existing tool attachment (requires id in body)
+// GET    /api/workspace/tool-attachments — returns tool/calculator results
+// POST   /api/workspace/tool-attachments — creates a new tool attachment + recalculates parent totals
+// PATCH  /api/workspace/tool-attachments — updates an existing tool attachment + recalculates parent totals
+// DELETE /api/workspace/tool-attachments — deletes a tool attachment (requires id in body) + recalculates parent totals
 //
 // Supabase-native `tool_attachments` table. Structured calculation
 // outputs attached to leads/jobs via parent_id/parent_type. Scoped by workspace_id.
+// Recalculation after create/update/delete matches CrmViewModel.kt v5.74.9 recalculateParentTotal().
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +20,10 @@ import {
   sumToolAttachmentTotals,
   updateLead,
   updateJob,
+  lookupLeadByClientRecordId,
+  lookupJobByClientRecordId,
 } from '@/lib/workspace-data';
+import { createServerSupabaseClient } from '@/lib/supabase';
 
 export async function GET(req: NextRequest) {
   try {
@@ -100,17 +105,24 @@ export async function POST(req: NextRequest) {
     }
 
     // Recalculate parent totals after attaching a tool
+    // resolvedParentId is client_record_id; updateLead/updateJob require leads.id/jobs.id
+    // so we look up the Postgres id first.
     let recalculated: { entity: string; new_total: number } | null = null;
     try {
       const entityType = resolvedParentType === 'LEAD' ? 'lead' : 'job';
       const { subtotal } = await sumToolAttachmentTotals(resolved, entityType, resolvedParentId);
       if (subtotal > 0) {
-        if (entityType === 'lead') {
-          await updateLead(resolved, resolvedParentId, { estimated_value: subtotal });
-        } else {
-          await updateJob(resolved, resolvedParentId, { job_value: subtotal });
+        const entityPkId = entityType === 'lead'
+          ? await lookupLeadByClientRecordId(resolved, resolvedParentId)
+          : await lookupJobByClientRecordId(resolved, resolvedParentId);
+        if (entityPkId) {
+          if (entityType === 'lead') {
+            await updateLead(resolved, entityPkId, { estimated_value: subtotal });
+          } else {
+            await updateJob(resolved, entityPkId, { job_value: subtotal });
+          }
+          recalculated = { entity: entityType, new_total: subtotal };
         }
-        recalculated = { entity: entityType, new_total: subtotal };
       }
     } catch (recalcErr) {
       console.error('[POST /api/workspace/tool-attachments] Recalculation failed:', recalcErr);
@@ -165,9 +177,112 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error }, { status: 400 });
     }
 
-    return NextResponse.json({ toolAttachment: data });
+    // Recalculate parent total after update — matches CrmViewModel.kt v5.74.9 updateAttachment()
+    // data.parent_id is client_record_id; updateLead/updateJob require the Postgres id.
+    let recalculated: { entity: string; new_total: number } | null = null;
+    if (data && data.parent_id && data.parent_type) {
+      try {
+        const entityType = data.parent_type === 'LEAD' ? 'lead' : 'job';
+        const { subtotal } = await sumToolAttachmentTotals(resolved, entityType, data.parent_id);
+        const entityPkId = entityType === 'lead'
+          ? await lookupLeadByClientRecordId(resolved, data.parent_id)
+          : await lookupJobByClientRecordId(resolved, data.parent_id);
+        if (entityPkId) {
+          if (entityType === 'lead') {
+            await updateLead(resolved, entityPkId, { estimated_value: subtotal });
+          } else {
+            await updateJob(resolved, entityPkId, { job_value: subtotal });
+          }
+          recalculated = { entity: entityType, new_total: subtotal };
+        }
+      } catch (recalcErr) {
+        console.error('[PATCH /api/workspace/tool-attachments] Recalculation failed:', recalcErr);
+      }
+    }
+
+    return NextResponse.json({ toolAttachment: data, recalculated });
   } catch (err) {
     console.error('[PATCH /api/workspace/tool-attachments] Failed:', err);
     return NextResponse.json({ error: 'Failed to update tool attachment' }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    const token = req.headers.get('Authorization')?.replace('Bearer ', '');
+    if (!token) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const resolved = await resolveUserFromToken(token);
+    if (!resolved) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json();
+    const { id } = body;
+
+    if (!id || typeof id !== 'string') {
+      return NextResponse.json({ error: 'Attachment id is required' }, { status: 400 });
+    }
+
+    const wsId = resolved.workspaceId ?? resolved.businessId;
+    if (!wsId) {
+      return NextResponse.json({ error: 'No workspace found' }, { status: 400 });
+    }
+
+    const supabase = createServerSupabaseClient();
+
+    // Fetch parent context before deleting so we can recalculate the parent total afterwards
+    const { data: existing, error: fetchErr } = await supabase
+      .from('tool_attachments')
+      .select('id, parent_id, parent_type')
+      .eq('id', id)
+      .eq('workspace_id', wsId)
+      .maybeSingle();
+
+    if (fetchErr || !existing) {
+      return NextResponse.json({ error: 'Tool attachment not found' }, { status: 404 });
+    }
+
+    // Workspace-scoped hard delete — matches OperationalSyncRepository.kt v1.16.0
+    const { error: deleteErr } = await supabase
+      .from('tool_attachments')
+      .delete()
+      .eq('id', id)
+      .eq('workspace_id', wsId);
+
+    if (deleteErr) {
+      console.error('[DELETE /api/workspace/tool-attachments] Failed:', deleteErr.message);
+      return NextResponse.json({ error: deleteErr.message }, { status: 500 });
+    }
+
+    // Recalculate parent total after deletion — matches CrmViewModel.kt v5.74.9 deleteAttachment()
+    // existing.parent_id is client_record_id; updateLead/updateJob require the Postgres id.
+    let recalculated: { entity: string; new_total: number } | null = null;
+    if (existing.parent_id && existing.parent_type) {
+      try {
+        const entityType = existing.parent_type === 'LEAD' ? 'lead' : 'job';
+        const { subtotal } = await sumToolAttachmentTotals(resolved, entityType, existing.parent_id);
+        const entityPkId = entityType === 'lead'
+          ? await lookupLeadByClientRecordId(resolved, existing.parent_id)
+          : await lookupJobByClientRecordId(resolved, existing.parent_id);
+        if (entityPkId) {
+          if (entityType === 'lead') {
+            await updateLead(resolved, entityPkId, { estimated_value: subtotal });
+          } else {
+            await updateJob(resolved, entityPkId, { job_value: subtotal });
+          }
+          recalculated = { entity: entityType, new_total: subtotal };
+        }
+      } catch (recalcErr) {
+        console.error('[DELETE /api/workspace/tool-attachments] Recalculation failed:', recalcErr);
+      }
+    }
+
+    return NextResponse.json({ deleted: true, id, recalculated });
+  } catch (err) {
+    console.error('[DELETE /api/workspace/tool-attachments] Failed:', err);
+    return NextResponse.json({ error: 'Failed to delete tool attachment' }, { status: 500 });
   }
 }

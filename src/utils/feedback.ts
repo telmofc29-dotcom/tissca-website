@@ -4,7 +4,20 @@
  */
 
 export type FeedbackType = 'help' | 'issue' | 'suggestion' | 'review' | 'cancellation';
-export type FeedbackStatus = 'new' | 'in-progress' | 'done';
+export type FeedbackStatus =
+  | 'new'
+  | 'investigating'
+  | 'planned'
+  | 'in_progress'
+  | 'fixed'
+  | 'released'
+  | 'closed'
+  | 'duplicate'
+  // legacy — kept for backward compat with existing rows
+  | 'in-progress'
+  | 'done';
+export type FeedbackSeverity = 'low' | 'medium' | 'high' | 'critical';
+export type FeedbackReproducibility = 'always' | 'sometimes' | 'rare' | 'unable_to_reproduce';
 export type FeedbackSection = 'homepage' | 'pricing' | 'download' | 'signin' | 'member-app' | 'quotes-invoices' | 'leads-jobs' | 'billing' | 'settings' | 'support' | 'calculators' | 'guides' | 'docs' | 'admin' | 'other' | 'subscription';
 export type DeviceType = 'mobile' | 'desktop' | 'tablet';
 
@@ -29,6 +42,68 @@ export interface FeedbackSubmission {
   internalNotes?: string;
   createdAt: string;
   updatedAt: string;
+  // Phase 1 — cross-platform unified fields
+  userId?: string;
+  workspaceId?: string;
+  platform?: 'web' | 'android' | 'ios' | 'api';
+  appVersion?: string;
+  buildNumber?: string;
+  osVersion?: string;
+  deviceModel?: string;
+  screenshots?: string[];
+  alphaTester?: boolean;
+  adminReply?: string;
+  repliedAt?: string;
+  triageTags?: string[];
+  // Phase 4 — triage + release intelligence
+  severity?: FeedbackSeverity;
+  reproducibility?: FeedbackReproducibility;
+  statusChangedAt?: string;
+  fixedInVersion?: string;
+  duplicateOfId?: string;
+}
+
+/**
+ * NativeFeedbackPayload — the JSON shape that Android/iOS apps should POST
+ * to `POST /api/feedback`.
+ *
+ * Key rules for native callers:
+ * - Do NOT include `user_id` — the server derives it from the Bearer token.
+ * - `Authorization: Bearer <access_token>` header is optional but strongly
+ *   recommended so submissions are linked to the authenticated user.
+ * - `platform` must be "android" or "ios".
+ * - `screenshots` must be CDN/storage URLs (strings ≤ 2048 chars), max 10 items.
+ * - All camelCase fields map to snake_case columns in the `feedback` table.
+ */
+export interface NativeFeedbackPayload {
+  /** Feedback category — same values as web. */
+  type: FeedbackType;
+  /** Short summary / title. Max 500 chars recommended. */
+  headline: string;
+  /** Full description. Max 5000 chars recommended. */
+  description: string;
+  /** Screen name or deep-link path, e.g. "/app/invoices" or "InvoiceDetailScreen". */
+  url?: string;
+  /** Must be "android" or "ios". */
+  platform: 'android' | 'ios';
+  /** App version string, e.g. "2.1.0". */
+  appVersion: string;
+  /** Build number / version code, e.g. "210" or "21000". */
+  buildNumber: string;
+  /** OS version string, e.g. "Android 14" or "iOS 17.4". */
+  osVersion?: string;
+  /** Device model, e.g. "Pixel 8" or "iPhone 15 Pro". */
+  deviceModel?: string;
+  /** User email (only needed for anonymous/unauthenticated submissions). */
+  userEmail?: string;
+  /** Star rating 1–5, only for type="review". */
+  rating?: number;
+  /** App section where feedback was triggered. */
+  section?: FeedbackSection;
+  /** CDN URLs of screenshot images. Max 10 items, each URL ≤ 2048 chars. */
+  screenshots?: string[];
+  /** Whether the submitter is an alpha/beta tester. */
+  alphaTester?: boolean;
 }
 
 export interface FeedbackFilter {
@@ -36,6 +111,10 @@ export interface FeedbackFilter {
   status?: FeedbackStatus;
   section?: FeedbackSection;
   search?: string;
+  // Phase 4
+  severity?: FeedbackSeverity;
+  platform?: 'web' | 'android' | 'ios' | 'api';
+  alphaTester?: boolean;
 }
 
 /**
@@ -99,6 +178,16 @@ export function createFeedbackSubmission(
     cancellationReasons?: string[];
     cancellationContext?: CancellationContext;
     isBlocked?: boolean;
+    // Phase 1
+    userId?: string;
+    workspaceId?: string;
+    platform?: 'web' | 'android' | 'ios' | 'api';
+    appVersion?: string;
+    buildNumber?: string;
+    osVersion?: string;
+    deviceModel?: string;
+    screenshots?: string[];
+    alphaTester?: boolean;
   }
 ): FeedbackSubmission {
   const now = new Date().toISOString();
@@ -121,6 +210,15 @@ export function createFeedbackSubmission(
     isBlocked: options?.isBlocked,
     createdAt: now,
     updatedAt: now,
+    userId: options?.userId,
+    workspaceId: options?.workspaceId,
+    platform: options?.platform ?? 'web',
+    appVersion: options?.appVersion,
+    buildNumber: options?.buildNumber,
+    osVersion: options?.osVersion,
+    deviceModel: options?.deviceModel,
+    screenshots: options?.screenshots,
+    alphaTester: options?.alphaTester ?? false,
   };
 }
 

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { exportFeedbackToCSV, type FeedbackSubmission, type CancellationContext } from '@/utils/feedback';
+import { getSupabaseClient } from '@/lib/supabase';
 
 function contextLabel(ctx: CancellationContext | undefined): string {
   if (ctx === 'subscription_cancel') return 'Subscription Cancel';
@@ -102,7 +103,15 @@ export default function AdminCancellationsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/feedback?type=cancellation');
+        const supabase = getSupabaseClient();
+        let token: string | undefined;
+        if (supabase) {
+          const { data: { session } } = await supabase.auth.getSession();
+          token = session?.access_token;
+        }
+        const res = await fetch('/api/feedback?type=cancellation', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!res.ok) return;
         const json = await res.json();
         setCancellations(json.feedback ?? []);

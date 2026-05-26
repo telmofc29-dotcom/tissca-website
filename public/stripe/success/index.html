@@ -274,6 +274,56 @@
         inset 0 2px 6px rgba(0,0,0,.28);
     }
 
+    button.btn{
+      cursor:pointer;
+      font-size:15px;
+      font-family:inherit;
+    }
+
+    .ref-row{
+      margin-top:18px;
+      display:flex;
+      align-items:center;
+      gap:10px;
+      flex-wrap:wrap;
+    }
+    .ref-label{
+      font-size:13px;
+      color:rgba(255,255,255,.52);
+    }
+    .ref-copy{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      background:linear-gradient(180deg,rgba(255,255,255,.07),rgba(255,255,255,.03));
+      color:rgba(255,255,255,.80);
+      font-size:12px;
+      font-weight:600;
+      cursor:pointer;
+      font-family:inherit;
+      letter-spacing:.1px;
+      transition:background .18s,border-color .18s,color .18s;
+    }
+    .ref-copy:hover{
+      background:linear-gradient(180deg,rgba(203,178,107,.14),rgba(203,178,107,.07));
+      border-color:rgba(203,178,107,.28);
+      color:var(--gold1);
+    }
+    .ref-copy.copied{
+      color:var(--ok);
+      border-color:rgba(101,242,168,.28);
+    }
+
+    .fallback{
+      margin-top:16px;
+      font-size:13px;
+      color:rgba(255,255,255,.52);
+      display:none;
+    }
+
     .meta{
       margin-top:18px;
       font-size:12px;
@@ -282,12 +332,13 @@
 
     @media (max-width: 600px){
       .card{padding:28px}
-      a.btn{min-width: 100%}
+      a.btn,button.btn{min-width: 100%}
+      .wrap{padding:16px env(safe-area-inset-right, 16px) 32px env(safe-area-inset-left, 16px)}
     }
 
     @media (prefers-reduced-motion: reduce){
       .ambient,.noise,a.btn::after{animation:none}
-      a.btn{transition:none}
+      a.btn,button.btn{transition:none}
     }
   </style>
 </head>
@@ -310,20 +361,22 @@
         You can safely return to the app.
       </p>
 
-      <p style="margin-top:18px;">
-        Reference
-        <span class="code" id="ref">Loading…</span>
-      </p>
-
-      <div class="row">
-        <a class="btn primary" id="openApp" href="tissca://billing/success" rel="noopener">
-          Open TISSCA app
-        </a>
-        <a class="btn secondary" id="backWeb" href="https://tissca.com" rel="noopener">
-          Back to website
-        </a>
+      <div class="ref-row">
+        <span class="ref-label">Reference</span>
+        <button class="ref-copy" id="refCopy">Copy reference</button>
       </div>
 
+      <div class="row">
+        <button class="btn primary" id="openApp">
+          Open TISSCA app
+        </button>
+        <a class="btn secondary" id="backWeb" href="/app/overview" rel="noopener">
+          Back to dashboard
+        </a>
+      </div>
+      <div class="fallback" id="fallback">
+        If the app does not open, return to TISSCA manually.
+      </div>
       <div class="meta" id="meta">
         If your plan doesn’t appear immediately, close and reopen the app once.
       </div>
@@ -332,64 +385,128 @@
 
   <script>
     // ============================================================
-    // CONFIG (edit these only)
+    // CONFIG
     // ============================================================
-    // This should be your Edge Function endpoint that verifies Stripe session
-    // and updates the workspace plan in Supabase.
-    //
-    // Example:
-    //   https://ovkpblbnnvnmsulrrnor.supabase.co/functions/v1/stripe-verify-checkout
-    //
-    const VERIFY_ENDPOINT = ""; // <-- SET THIS (or leave empty to disable verification)
-
-    // Optional: if you prefer the success page to route somewhere else on web
-    const WEB_FALLBACK = "https://tissca.com";
+    // Edge Function that verifies the Stripe session & updates the workspace plan.
+    // Example: https://<ref>.supabase.co/functions/v1/stripe-verify-checkout
+    const VERIFY_ENDPOINT = ""; // <-- SET THIS (or leave empty to disable)
 
     // ============================================================
-    // Helpers
+    // Setup
     // ============================================================
-    const params = new URLSearchParams(location.search);
+    const params    = new URLSearchParams(location.search);
     const sessionId = params.get("session_id") || "";
-    const refEl = document.getElementById("ref");
-    const statusDot = document.getElementById("statusDot");
+
+    const refCopyBtn = document.getElementById("refCopy");
+    const statusDot  = document.getElementById("statusDot");
     const statusText = document.getElementById("statusText");
-    const meta = document.getElementById("meta");
-    const desc = document.getElementById("desc");
+    const meta       = document.getElementById("meta");
+    const desc       = document.getElementById("desc");
+    const fallback   = document.getElementById("fallback");
+    const openAppBtn = document.getElementById("openApp");
 
-    // Show a stable reference
-    refEl.textContent = sessionId || ("TISSCA-" + Math.random().toString(16).slice(2,10).toUpperCase());
+    // Stable display reference (full session_id kept internal for copying)
+    const refDisplay = sessionId
+      ? (sessionId.length > 24
+          ? sessionId.slice(0,8) + "…" + sessionId.slice(-6)
+          : sessionId)
+      : ("TISSCA-" + Math.random().toString(16).slice(2,10).toUpperCase());
 
-    // Attempt deep link open
-    // (Some browsers block auto-open; the button remains the reliable path.)
-    setTimeout(() => {
-      try { /* no-op */ } catch {}
-    }, 250);
+    // -- Copy reference -------------------------------------------
+    function doCopy(text) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(showCopied).catch(function () { execCopy(text); });
+      } else {
+        execCopy(text);
+      }
+    }
+    function execCopy(text) {
+      try {
+        var el = document.createElement("textarea");
+        el.value = text;
+        el.style.cssText = "position:fixed;opacity:0;pointer-events:none";
+        document.body.appendChild(el);
+        el.select();
+        document.execCommand("copy");
+        document.body.removeChild(el);
+        showCopied();
+      } catch (err) {}
+    }
+    function showCopied() {
+      if (!refCopyBtn) return;
+      refCopyBtn.textContent = "Copied!";
+      refCopyBtn.classList.add("copied");
+      setTimeout(function () {
+        refCopyBtn.textContent = "Copy reference";
+        refCopyBtn.classList.remove("copied");
+      }, 2200);
+    }
+    if (refCopyBtn) {
+      refCopyBtn.addEventListener("click", function () {
+        doCopy(sessionId || refDisplay);
+      });
+    }
 
-    function setState(type, text, metaText){
-      statusDot.classList.remove("ok","bad");
-      if (type === "ok") statusDot.classList.add("ok");
+    // -- Deep link open -------------------------------------------
+    var fallbackTimer = null;
+    var appLinkUsed   = false;
+
+    function openApp() {
+      if (appLinkUsed) return;
+      appLinkUsed = true;
+
+      var deepLink = sessionId
+        ? ("tissca://stripe/success?session_id=" + encodeURIComponent(sessionId))
+        : "tissca://stripe/success";
+
+      window.location.href = deepLink;
+
+      // Show fallback text if page is still visible after 1600ms
+      fallbackTimer = setTimeout(function () {
+        if (!document.hidden && fallback) {
+          fallback.style.display = "block";
+        }
+        appLinkUsed = false; // allow retry
+      }, 1600);
+    }
+
+    // Cancel the fallback timer if the OS switched to the app (page hidden)
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden && fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = null;
+      }
+    });
+
+    if (openAppBtn) {
+      openAppBtn.addEventListener("click", openApp);
+    }
+
+    // -- Status helpers -------------------------------------------
+    function setState(type, text, metaText) {
+      statusDot.classList.remove("ok", "bad");
+      if (type === "ok")  statusDot.classList.add("ok");
       if (type === "bad") statusDot.classList.add("bad");
       statusText.textContent = text;
       if (metaText) meta.textContent = metaText;
     }
 
-    async function verify(){
+    // -- Verify subscription (optional endpoint) ------------------
+    async function verify() {
       if (!VERIFY_ENDPOINT || !sessionId) {
         setState("ok", "Payment successful", "You can return to the app.");
         return;
       }
 
-      // This success page is static, so we can't securely sign anything here.
-      // We simply ask the server (Edge Function) to verify the session with Stripe
-      // and update Supabase accordingly.
-      try{
-        const res = await fetch(VERIFY_ENDPOINT, {
+      // Static page: ask the Edge Function to verify with Stripe server-side.
+      try {
+        var res = await fetch(VERIFY_ENDPOINT, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ session_id: sessionId })
         });
 
-        const data = await res.json().catch(() => ({}));
+        var data = await res.json().catch(function () { return {}; });
 
         if (!res.ok) {
           setState(
@@ -400,18 +517,20 @@
           return;
         }
 
-        const plan = data?.plan_tier ? String(data.plan_tier).toUpperCase() : null;
+        var plan = (data && data.plan_tier) ? String(data.plan_tier).toUpperCase() : null;
 
         setState(
           "ok",
           "Subscription activated",
-          plan ? (`Plan active: ${plan}. You can return to the app.`) : ("You can return to the app.")
+          plan
+            ? ("Plan active: " + plan + ". You can return to the app.")
+            : "You can return to the app."
         );
 
         desc.textContent =
           "Thank you — your subscription is now active. Your premium features will be available in the app.";
 
-      } catch (e){
+      } catch (e) {
         setState(
           "bad",
           "Payment received — activation pending",

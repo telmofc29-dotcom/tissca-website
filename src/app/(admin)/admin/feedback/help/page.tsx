@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { exportFeedbackToCSV, type FeedbackSubmission, type FeedbackStatus } from '@/utils/feedback';
+import { getSupabaseClient } from '@/lib/supabase';
 
 function AreaBreakdown({ items }: { items: FeedbackSubmission[] }) {
   const counts = useMemo(() => {
@@ -41,7 +42,15 @@ export default function AdminHelpRequestsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/feedback?type=help');
+        const supabase = getSupabaseClient();
+        let token: string | undefined;
+        if (supabase) {
+          const { data: { session } } = await supabase.auth.getSession();
+          token = session?.access_token;
+        }
+        const res = await fetch('/api/feedback?type=help', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!res.ok) return;
         const json = await res.json();
         setItems(json.feedback ?? []);
@@ -73,12 +82,19 @@ export default function AdminHelpRequestsPage() {
   };
 
   const getStatusBadge = (status: FeedbackStatus) => {
-    const c: Record<FeedbackStatus, string> = {
+    const c: Record<string, string> = {
       new: 'bg-blue-100 text-blue-800 border-blue-200',
       'in-progress': 'bg-amber-100 text-amber-800 border-amber-200',
       done: 'bg-green-100 text-green-800 border-green-200',
+      investigating: 'bg-purple-100 text-purple-800 border-purple-200',
+      planned: 'bg-cyan-100 text-cyan-800 border-cyan-200',
+      in_progress: 'bg-amber-100 text-amber-800 border-amber-200',
+      fixed: 'bg-green-100 text-green-800 border-green-200',
+      released: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+      closed: 'bg-gray-100 text-gray-700 border-gray-200',
+      duplicate: 'bg-slate-100 text-slate-600 border-slate-200',
     };
-    return c[status];
+    return c[status] ?? 'bg-gray-100 text-gray-700 border-gray-200';
   };
 
   return (

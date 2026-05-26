@@ -35,8 +35,8 @@ type Lead = {
   estimated_value: number | null;
   follow_up_at_millis: number | null;
   notes: string | null;
-  client_id: string | null;
-  // ── CRM dates (millis) — all map to CalendarDateType ──
+  client_id: string | null;  // cross-platform identity key — tool_attachments.parent_id stores this value
+  client_record_id: string | null;  // ── CRM dates (millis) — all map to CalendarDateType ──
   survey_date_millis: number | null;
   start_date_millis: number | null;
   materials_delivery_date_millis: number | null;
@@ -154,7 +154,11 @@ export default function LeadDetailPage() {
       if (attachRes.ok) {
         const attachData = await attachRes.json();
         const allCards = (attachData.toolAttachments ?? []).map((a: ToolAttachment) => attachmentToCard(a));
-        setToolCards(allCards.filter((c: ToolCardSummary) => c.parent_id === leadId));
+        // Filter by client_record_id — tool_attachments.parent_id stores client_record_id,
+        // NOT leads.id. Supabase proof: parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
+        setToolCards(found.client_record_id
+          ? allCards.filter((c: ToolCardSummary) => c.parent_id === found.client_record_id)
+          : []);
       }
 
       setError(null);
@@ -176,25 +180,15 @@ export default function LeadDetailPage() {
   async function handleConvertToJob() {
     if (!lead) return;
     try {
-      const res = await fetch('/api/workspace/jobs', {
+      // Use the dedicated conversion endpoint — handles tool reassignment,
+      // VAT lookup, deposit aggregation, and full history logging.
+      // Matches LeadToJobMapper.kt v1.13 + CrmViewModel.kt v5.74.9 contract.
+      const res = await fetch(`/api/workspace/leads/${leadId}/convert`, {
         method: 'POST',
         headers: authHeaders(),
-        body: JSON.stringify({
-          client_name: lead.client_name || 'Untitled job',
-          status: 'SCHEDULED',
-          lead_id: lead.id,
-          client_id: lead.client_id ?? null,
-          job_value: lead.estimated_value,
-        }),
       });
-      if (!res.ok) throw new Error('Failed to convert to job');
-
-      // Update lead status to "WON"
-      await fetch('/api/workspace/leads', {
-        method: 'PATCH',
-        headers: authHeaders(),
-        body: JSON.stringify({ id: lead.id, status: 'WON' }),
-      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Failed to convert to job');
 
       trackEvent('feature_view', `/app/leads/${leadId}`, { eventLabel: 'lead_converted_to_job' });
       router.push('/app/jobs');

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { exportFeedbackToCSV, type FeedbackSubmission } from '@/utils/feedback';
+import { getSupabaseClient } from '@/lib/supabase';
 
 function StarDisplay({ rating }: { rating: number }) {
   return (
@@ -19,7 +20,15 @@ export default function AdminReviewsPage() {
   useEffect(() => {
     const load = async () => {
       try {
-        const res = await fetch('/api/feedback?type=review');
+        const supabase = getSupabaseClient();
+        let token: string | undefined;
+        if (supabase) {
+          const { data: { session } } = await supabase.auth.getSession();
+          token = session?.access_token;
+        }
+        const res = await fetch('/api/feedback?type=review', {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
         if (!res.ok) return;
         const json = await res.json();
         setItems(json.feedback ?? []);

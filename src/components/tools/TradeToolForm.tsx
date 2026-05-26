@@ -53,8 +53,8 @@ type FormState = {
   depositAmount: number;
 };
 
-type PickerLead = { id: string; client_name: string | null; status: string; estimated_value: number | null };
-type PickerJob = { id: string; client_name: string | null; status: string; job_value: number | null };
+type PickerLead = { id: string; client_name: string | null; status: string; estimated_value: number | null; client_record_id: string | null };
+type PickerJob = { id: string; client_name: string | null; status: string; job_value: number | null; client_record_id: string | null };
 
 type SuccessInfo = {
   type: 'new_lead' | 'add_to_lead' | 'add_to_job' | 'update';
@@ -452,6 +452,7 @@ export default function TradeToolForm({ definition, attachmentId: attachmentIdPr
       setPickerLeads(
         (data.leads || []).map((l: Record<string, unknown>) => ({
           id: l.id, client_name: l.client_name as string | null, status: l.status as string, estimated_value: l.estimated_value as number | null,
+          client_record_id: l.client_record_id as string | null,
         })),
       );
       setPickerMode('lead');
@@ -466,7 +467,9 @@ export default function TradeToolForm({ definition, attachmentId: attachmentIdPr
     setGenerating(true);
     setError(null);
     try {
-      const ok = await createAttachment({ parent_id: lead.id, parent_type: 'LEAD' });
+      // Use client_record_id as parent_id — tool_attachments.parent_id stores client_record_id,
+      // NOT leads.id. Supabase proof: parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
+      const ok = await createAttachment({ parent_id: lead.client_record_id ?? lead.id, parent_type: 'LEAD' });
       if (!ok) throw new Error('Failed to attach to lead.');
       clearDraft(toolKey);
       setPickerMode('none');
@@ -498,6 +501,7 @@ export default function TradeToolForm({ definition, attachmentId: attachmentIdPr
       setPickerJobs(
         (data.jobs || []).map((j: Record<string, unknown>) => ({
           id: j.id, client_name: j.client_name as string | null, status: j.status as string, job_value: j.job_value as number | null,
+          client_record_id: j.client_record_id as string | null,
         })),
       );
       setPickerMode('job');
@@ -512,7 +516,9 @@ export default function TradeToolForm({ definition, attachmentId: attachmentIdPr
     setGenerating(true);
     setError(null);
     try {
-      const ok = await createAttachment({ parent_id: job.id, parent_type: 'JOB' });
+      // Use client_record_id as parent_id — tool_attachments.parent_id stores client_record_id,
+      // NOT jobs.id. Supabase proof: parent_matches_uuid_pk=0, parent_matches_client_record_id=3.
+      const ok = await createAttachment({ parent_id: job.client_record_id ?? job.id, parent_type: 'JOB' });
       if (!ok) throw new Error('Failed to attach to job.');
       clearDraft(toolKey);
       setPickerMode('none');

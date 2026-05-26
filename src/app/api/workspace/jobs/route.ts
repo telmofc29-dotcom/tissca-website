@@ -1,4 +1,4 @@
-// src/app/api/workspace/jobs/route.ts v5.0
+// src/app/api/workspace/jobs/route.ts v5.1
 //
 // GET    /api/workspace/jobs          — list jobs (workspace_id scoped)
 // POST   /api/workspace/jobs          — create a new job
@@ -68,11 +68,13 @@ export async function POST(req: NextRequest) {
       lead_id: body.lead_id ?? null,
       client_id: body.client_id ?? null,
       client_record_id: body.client_record_id ?? null,
+      client_reference: body.client_reference ?? null,
       status: body.status,
       job_type: body.job_type ?? null,
       source_tool_key: body.source_tool_key ?? null,
       start_date_millis: body.start_date_millis != null ? Number(body.start_date_millis) : null,
       due_date_millis: body.due_date_millis != null ? Number(body.due_date_millis) : null,
+      survey_date_millis: body.survey_date_millis != null ? Number(body.survey_date_millis) : null,
       job_value: body.job_value != null ? Number(body.job_value) : (body.value != null ? Number(body.value) : null),
       notes: body.notes ?? null,
       user_notes: body.user_notes ?? null,
@@ -90,8 +92,10 @@ export async function POST(req: NextRequest) {
       deposit_paid_amount: body.deposit_paid_amount != null ? Number(body.deposit_paid_amount) : null,
       deposit_status: body.deposit_status ?? null,
       payment_status: body.payment_status ?? null,
+      payment_due_date_millis: body.payment_due_date_millis != null ? Number(body.payment_due_date_millis) : null,
       vat_percent: body.vat_percent != null ? Number(body.vat_percent) : null,
       discount_amount: body.discount_amount != null ? Number(body.discount_amount) : null,
+      discount_percent: body.discount_percent != null ? Number(body.discount_percent) : null,
       top_pdf_notes: body.top_pdf_notes ?? null,
       bottom_pdf_notes: body.bottom_pdf_notes ?? null,
       start_time_hour: body.start_time_hour != null ? Number(body.start_time_hour) : null,
@@ -148,11 +152,13 @@ export async function PATCH(req: NextRequest) {
     if (fields.lead_id !== undefined) input.lead_id = fields.lead_id;
     if (fields.client_id !== undefined) input.client_id = fields.client_id;
     if (fields.client_record_id !== undefined) input.client_record_id = fields.client_record_id;
+    if (fields.client_reference !== undefined) input.client_reference = fields.client_reference;
     if (fields.status !== undefined) input.status = fields.status;
     if (fields.job_type !== undefined) input.job_type = fields.job_type;
     if (fields.source_tool_key !== undefined) input.source_tool_key = fields.source_tool_key;
     if (fields.start_date_millis !== undefined) input.start_date_millis = fields.start_date_millis;
     if (fields.due_date_millis !== undefined) input.due_date_millis = fields.due_date_millis;
+    if (fields.survey_date_millis !== undefined) input.survey_date_millis = fields.survey_date_millis;
     if (fields.job_value !== undefined) input.job_value = fields.job_value != null ? Number(fields.job_value) : null;
     if (fields.value !== undefined && fields.job_value === undefined) input.job_value = fields.value != null ? Number(fields.value) : null;
     if (fields.notes !== undefined) input.notes = fields.notes;
@@ -171,8 +177,10 @@ export async function PATCH(req: NextRequest) {
     if (fields.deposit_paid_amount !== undefined) input.deposit_paid_amount = fields.deposit_paid_amount;
     if (fields.deposit_status !== undefined) input.deposit_status = fields.deposit_status;
     if (fields.payment_status !== undefined) input.payment_status = fields.payment_status;
+    if (fields.payment_due_date_millis !== undefined) input.payment_due_date_millis = fields.payment_due_date_millis;
     if (fields.vat_percent !== undefined) input.vat_percent = fields.vat_percent;
     if (fields.discount_amount !== undefined) input.discount_amount = fields.discount_amount;
+    if (fields.discount_percent !== undefined) input.discount_percent = fields.discount_percent;
     if (fields.top_pdf_notes !== undefined) input.top_pdf_notes = fields.top_pdf_notes;
     if (fields.bottom_pdf_notes !== undefined) input.bottom_pdf_notes = fields.bottom_pdf_notes;
     if (fields.start_time_hour !== undefined) input.start_time_hour = fields.start_time_hour;
