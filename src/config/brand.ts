@@ -134,6 +134,7 @@ export const brandConfig = {
         { label: 'Guides', href: '/guides' },
         { label: 'Standards', href: '/standards' },
         { label: 'Support', href: '/support' },
+        { label: 'Help & Feedback', href: '/feedback' },
       ],
     },
   },
