@@ -57,7 +57,7 @@ const ALWAYS_PUBLIC: string[] = ['/auth/verified', '/auth/callback'];
 /** Path prefixes that require authentication. Unauthenticated users → /sign-in. */
 const PROTECTED_PREFIXES: string[] = ['/app', '/dashboard', '/account', '/admin'];
 
-/** Exact auth page paths. Authenticated users → /dashboard. */
+/** Exact auth page paths. Authenticated users → /app/overview. */
 const AUTH_PAGES: string[] = ['/sign-in', '/sign-up', '/register', '/login'];
 
 /**
@@ -135,7 +135,7 @@ export async function middleware(request: NextRequest) {
 
   // 5) Authenticated user on auth pages → redirect to dashboard
   if (user && AUTH_PAGES.includes(pathname)) {
-    return NextResponse.redirect(new URL('/dashboard', request.url));
+    return NextResponse.redirect(new URL('/app/overview', request.url));
   }
 
   // 6) Unauthenticated user on protected pages → redirect to sign-in

@@ -100,7 +100,7 @@ export default function SignInPage() {
           }
           sessionStorage.setItem(REDIRECT_KEY, '1');
         } catch { /* SSR / private browsing */ }
-        router.replace('/dashboard');
+        router.replace('/app/overview');
       } else {
         // Stale/expired session detected — clear it so future checks start clean
         if (error) {
@@ -114,9 +114,12 @@ export default function SignInPage() {
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return; // Guard against duplicate submissions
+
     setError('');
     setShowResendVerification(false);
     setResendSuccess(false);
+    setIsLoading(true); // Disable button immediately — before any async work
 
     if (turnstile.enabled && !turnstile.token) {
       setError(
@@ -128,10 +131,9 @@ export default function SignInPage() {
               ? 'Security check is still loading — please wait a moment.'
               : 'Please complete the security check.'
       );
+      setIsLoading(false);
       return;
     }
-
-    setIsLoading(true);
 
     try {
       trackEvent('signin_view', '/sign-in', { metadata: { ctaName: 'sign_in_submit', sourcePage: '/sign-in', sourceSection: 'auth_form', locale: typeof document !== 'undefined' ? document.documentElement.lang : undefined } });
@@ -176,7 +178,7 @@ export default function SignInPage() {
         }
       }
 
-      let destination = '/dashboard';
+      let destination = '/app/overview';
       try {
         const meResponse = await fetch('/api/user/me', {
           headers: {
