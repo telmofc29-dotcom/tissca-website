@@ -2,6 +2,7 @@ import { addFeedbackSubmission, getAllFeedback, filterFeedback, type FeedbackSub
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { rateLimit, getClientIp } from '@/lib/rate-limit';
+import { createFeedbackNotification } from '@/lib/admin-notifications';
 
 export const dynamic = 'force-dynamic';
 
@@ -241,6 +242,13 @@ export async function POST(request: NextRequest) {
 
     // Persist to DB (falls back to in-memory)
     await persistFeedback(submission);
+
+    // Phase 2: emit platform_event + fan-out admin_notifications.
+    // Non-fatal — runs in the background after response is ready.
+    // Failure here must never surface to the submitter.
+    createFeedbackNotification(submission).catch((err) => {
+      console.warn('[POST /api/feedback] Notification emission failed (non-fatal):', err);
+    });
 
     return NextResponse.json({
       success: true,

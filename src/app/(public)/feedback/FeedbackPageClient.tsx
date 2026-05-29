@@ -30,7 +30,7 @@ const AREAS: { label: string; value: FeedbackSection }[] = [
 
 type Tab = 'help' | 'issue' | 'suggestion' | 'review';
 
-// ─── Shared field components (inline — avoids a separate import) ──────────────
+// ─── Shared styles ────────────────────────────────────────────────────────────
 
 const INPUT_CLASS =
   'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent text-sm transition-colors';
@@ -39,6 +39,65 @@ const TEXTAREA_CLASS =
   'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent resize-none text-sm transition-colors';
 
 const LABEL_CLASS = 'block text-sm font-medium text-white/70 mb-2';
+
+// ─── Module-level field components (MUST be outside the parent to preserve
+//     component identity across re-renders — inline definitions cause React to
+//     unmount/remount on every keystroke, losing input focus.) ─────────────────
+
+function AreaSelector({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: FeedbackSection | '';
+  onChange: (v: FeedbackSection) => void;
+}) {
+  return (
+    <div>
+      <label className={LABEL_CLASS}>{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value as FeedbackSection)}
+        className="w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent text-sm transition-colors appearance-none"
+        style={{ colorScheme: 'dark' }}
+      >
+        <option value="" className="bg-[#0d1520] text-white">Select an area…</option>
+        {AREAS.map(({ label: l, value: v }) => (
+          <option key={v} value={v} className="bg-[#0d1520] text-white">
+            {l}
+          </option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
+function EmailField({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div>
+      <label className={LABEL_CLASS}>
+        Your email <span className="text-white/30 font-normal">(optional)</span>
+      </label>
+      <input
+        type="email"
+        placeholder="you@example.com"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className={INPUT_CLASS}
+      />
+      <p className="text-xs text-white/30 mt-1.5">
+        For urgent account or billing issues, include your email so we can reply.
+      </p>
+    </div>
+  );
+}
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
@@ -51,6 +110,9 @@ export default function FeedbackPageClient() {
   const [section, setSection] = useState<FeedbackSection | ''>('');
   const [isBlocked, setIsBlocked] = useState<boolean | null>(null);
   const [benefit, setBenefit] = useState('');
+  const [screenshots, setScreenshots] = useState<string[]>([]);
+  const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
+  const [uploadError, setUploadError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
@@ -63,8 +125,45 @@ export default function FeedbackPageClient() {
     setSection('');
     setIsBlocked(null);
     setBenefit('');
+    setScreenshots([]);
+    setUploadError('');
     setErrorMsg('');
     setSubmitted(false);
+  };
+
+  // ── Screenshot upload ────────────────────────────────────────────────────
+  const MAX_SCREENSHOTS = 3;
+
+  const handleScreenshotFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    const remaining = MAX_SCREENSHOTS - screenshots.length;
+    if (remaining <= 0) return;
+    const toUpload = Array.from(files).slice(0, remaining);
+    setUploadError('');
+    setUploadingScreenshot(true);
+    const uploaded: string[] = [];
+    for (const file of toUpload) {
+      const fd = new FormData();
+      fd.append('file', file);
+      try {
+        const res = await fetch('/api/feedback/upload-screenshot', { method: 'POST', body: fd });
+        if (res.ok) {
+          const data: { url: string } = await res.json();
+          uploaded.push(data.url);
+        } else {
+          const data: { error?: string } = await res.json().catch(() => ({}));
+          setUploadError(data?.error ?? 'Upload failed. Please try again.');
+        }
+      } catch {
+        setUploadError('Upload failed. Check your connection and try again.');
+      }
+    }
+    setScreenshots((prev) => [...prev, ...uploaded].slice(0, MAX_SCREENSHOTS));
+    setUploadingScreenshot(false);
+  };
+
+  const removeScreenshot = (url: string) => {
+    setScreenshots((prev) => prev.filter((u) => u !== url));
   };
 
   const handleTabChange = (next: Tab) => {
@@ -110,6 +209,7 @@ export default function FeedbackPageClient() {
           rating: tab === 'review' ? rating : undefined,
           section: (section as FeedbackSection) || undefined,
           isBlocked: isBlocked ?? undefined,
+          screenshots: screenshots.length > 0 ? screenshots : undefined,
           // Metadata: identify this as from the public standalone page
           platform: 'web',
           alphaTester: false,
@@ -153,45 +253,6 @@ export default function FeedbackPageClient() {
       setIsSubmitting(false);
     }
   };
-
-  // ── Area selector (shared) ──────────────────────────────────────────────────
-  const AreaSelector = ({ label }: { label: string }) => (
-    <div>
-      <label className={LABEL_CLASS}>{label}</label>
-      <select
-        value={section}
-        onChange={(e) => setSection(e.target.value as FeedbackSection)}
-        className="w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent text-sm transition-colors appearance-none"
-        style={{ colorScheme: 'dark' }}
-      >
-        <option value="" className="bg-[#0d1520] text-white">Select an area…</option>
-        {AREAS.map(({ label: l, value }) => (
-          <option key={value} value={value} className="bg-[#0d1520] text-white">
-            {l}
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-
-  // ── Email field (shared) ────────────────────────────────────────────────────
-  const EmailField = () => (
-    <div>
-      <label className={LABEL_CLASS}>
-        Your email <span className="text-white/30 font-normal">(optional)</span>
-      </label>
-      <input
-        type="email"
-        placeholder="you@example.com"
-        value={email}
-        onChange={(e) => setEmail(e.target.value)}
-        className={INPUT_CLASS}
-      />
-      <p className="text-xs text-white/30 mt-1.5">
-        For urgent account or billing issues, include your email so we can reply.
-      </p>
-    </div>
-  );
 
   // ── Success state ───────────────────────────────────────────────────────────
   if (submitted) {
@@ -280,7 +341,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <AreaSelector label="Which area is this about?" />
+                <AreaSelector label="Which area is this about?" value={section} onChange={setSection} />
 
                 <div>
                   <label className={LABEL_CLASS}>Are you blocked or stuck?</label>
@@ -323,7 +384,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <EmailField />
+                <EmailField value={email} onChange={setEmail} />
               </>
             )}
 
@@ -341,7 +402,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <AreaSelector label="Which area is affected?" />
+                <AreaSelector label="Which area is affected?" value={section} onChange={setSection} />
 
                 <div>
                   <label className={LABEL_CLASS}>Describe the issue</label>
@@ -382,12 +443,68 @@ export default function FeedbackPageClient() {
                   </div>
                 </div>
 
-                {/* TODO: Screenshot attachment — /api/feedback/screenshots endpoint exists
-                    but no shared upload component yet. Wire here once the component is
-                    extracted from the Phase 3 screenshot pipeline. Do not duplicate the
-                    upload logic. */}
+                {/* ── Screenshot attachment ──────────────────────────────────────────── */}
+                <div>
+                  <label className={LABEL_CLASS}>
+                    Screenshot{screenshots.length > 0 ? `s (${screenshots.length}/${MAX_SCREENSHOTS})` : 's'}{' '}
+                    <span className="text-white/30 font-normal">(optional — JPEG, PNG or WebP, max 5 MB each)</span>
+                  </label>
 
-                <EmailField />
+                  {/* Thumbnails */}
+                  {screenshots.length > 0 && (
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {screenshots.map((url) => (
+                        <div key={url} className="relative group">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img
+                            src={url}
+                            alt="Screenshot"
+                            className="h-20 w-20 rounded-lg object-cover border border-white/10"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => removeScreenshot(url)}
+                            className="absolute -top-1.5 -right-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-white text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="Remove screenshot"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {screenshots.length < MAX_SCREENSHOTS && (
+                    <label
+                      className={`flex items-center gap-2 cursor-pointer w-fit px-4 py-2.5 rounded-lg border text-sm transition-all ${
+                        uploadingScreenshot
+                          ? 'border-white/10 bg-white/[0.03] text-white/30 cursor-not-allowed'
+                          : 'border-white/[0.12] bg-white/[0.04] text-white/60 hover:bg-white/[0.08] hover:text-white/80'
+                      }`}
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      {uploadingScreenshot ? 'Uploading…' : 'Attach screenshot'}
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp"
+                        multiple
+                        disabled={uploadingScreenshot}
+                        className="sr-only"
+                        onChange={(e) => handleScreenshotFiles(e.target.files)}
+                      />
+                    </label>
+                  )}
+
+                  {uploadError && (
+                    <p className="text-red-400 text-xs mt-1.5">{uploadError}</p>
+                  )}
+                </div>
+
+                <EmailField value={email} onChange={setEmail} />
               </>
             )}
 
@@ -405,7 +522,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <AreaSelector label="Which area?" />
+                <AreaSelector label="Which area?" value={section} onChange={setSection} />
 
                 <div>
                   <label className={LABEL_CLASS}>Your suggestion</label>
@@ -431,7 +548,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <EmailField />
+                <EmailField value={email} onChange={setEmail} />
               </>
             )}
 
@@ -482,7 +599,7 @@ export default function FeedbackPageClient() {
                   />
                 </div>
 
-                <EmailField />
+                <EmailField value={email} onChange={setEmail} />
               </>
             )}
 

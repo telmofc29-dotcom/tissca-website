@@ -17,11 +17,12 @@
 
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { brandConfig } from '@/config/brand';
 import { AuthNav } from '@/components/AuthNav';
+import { getSupabaseClient } from '@/lib/supabase';
 
 interface AdminSidebarItem {
   label: string;
@@ -42,6 +43,7 @@ const sidebarItems: AdminSidebarItem[] = [
   { label: 'Pricing', href: '/admin/pricing', icon: '💷' },
   { label: 'Documents', href: '/admin/docs', icon: '📚' },
   { label: 'Feedback', href: '/admin/feedback', icon: '💬' },
+  { label: 'Notifications', href: '/admin/notifications', icon: '🔔' },
   // REMOVED: Support (Support Inbox lives under Engineering)
   { label: 'Engineering', href: '/admin/engineering', icon: '🛠️' },
   { label: 'Accountant', href: '/admin/accountant', icon: '🧾' },
@@ -65,6 +67,7 @@ function getAdminTitle(pathname: string) {
   if (pathname.startsWith('/admin/pricing')) return 'Pricing';
   if (pathname.startsWith('/admin/docs')) return 'Documents';
   if (pathname.startsWith('/admin/feedback')) return 'Feedback';
+  if (pathname.startsWith('/admin/notifications')) return 'Notifications';
   // REMOVED: /admin/support title mapping (Support now lives under /admin/engineering/*)
   if (pathname.startsWith('/admin/engineering')) return 'Engineering';
   if (pathname.startsWith('/admin/accountant')) return 'Accountant';
@@ -74,6 +77,33 @@ function getAdminTitle(pathname: string) {
 
 export default function AdminShell({ children }: AdminShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [adminUnread, setAdminUnread] = useState(0);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadUnread = async () => {
+      try {
+        const supabase = getSupabaseClient();
+        if (!supabase) return;
+        const { data: { session } } = await supabase.auth.getSession();
+        const token = session?.access_token;
+        if (!token) return;
+        // Phase 2: poll unified admin_notifications count
+        const res = await fetch('/api/admin/notifications/count', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const data: { count?: number } = await res.json();
+        if (!cancelled) setAdminUnread(data.count ?? 0);
+      } catch {
+        // Non-critical — badge stays at 0
+      }
+    };
+    loadUnread();
+    // Poll every 30 seconds
+    const interval = setInterval(loadUnread, 30_000);
+    return () => { cancelled = true; clearInterval(interval); };
+  }, []);
 
   // HARDEN (fail-closed): ensure pathname is always a string before using startsWith()
   const pathname = usePathname() ?? '';
@@ -111,12 +141,24 @@ export default function AdminShell({ children }: AdminShellProps) {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
+              className={`relative flex items-center gap-3 px-4 py-3 rounded-lg transition-colors ${
                 isActive(item.href) ? 'bg-blue-600 text-white' : 'text-gray-300 hover:bg-gray-800'
               }`}
             >
               <span className="text-xl flex-shrink-0">{item.icon}</span>
-              {sidebarOpen && <span className="font-medium">{item.label}</span>}
+              {sidebarOpen && (
+                <span className="flex flex-1 items-center justify-between font-medium">
+                  {item.label}
+                  {item.href === '/admin/notifications' && adminUnread > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {adminUnread > 99 ? '99+' : adminUnread}
+                    </span>
+                  )}
+                </span>
+              )}
+              {!sidebarOpen && item.href === '/admin/notifications' && adminUnread > 0 && (
+                <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-red-500" />
+              )}
             </Link>
           ))}
         </nav>
@@ -175,7 +217,14 @@ export default function AdminShell({ children }: AdminShellProps) {
                 }`}
               >
                 <span className="text-xl flex-shrink-0">{item.icon}</span>
-                <span className="font-medium">{item.label}</span>
+                <span className="flex flex-1 items-center justify-between font-medium">
+                  {item.label}
+                  {item.href === '/admin/notifications' && adminUnread > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {adminUnread > 99 ? '99+' : adminUnread}
+                    </span>
+                  )}
+                </span>
               </Link>
             ))}
           </nav>
@@ -205,7 +254,23 @@ export default function AdminShell({ children }: AdminShellProps) {
             </div>
 
             {/* Real user dropdown (proof-based) */}
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {/* Notification bell — links to /admin/notifications */}
+              <Link
+                href="/admin/notifications"
+                className="relative inline-flex h-9 w-9 items-center justify-center rounded-full text-gray-500 hover:bg-gray-100 hover:text-gray-700 transition-colors"
+                title={adminUnread > 0 ? `${adminUnread} unread notification${adminUnread !== 1 ? 's' : ''}` : 'Notifications'}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                  <path d="M18 8A6 6 0 1 0 6 8c0 7-3 9-3 9h18s-3-2-3-9Z" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {adminUnread > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
+                    {adminUnread > 99 ? '99+' : adminUnread}
+                  </span>
+                )}
+              </Link>
               <AuthNav />
             </div>
           </div>

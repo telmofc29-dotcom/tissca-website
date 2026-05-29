@@ -231,7 +231,7 @@ export function GlobalHeader({
 
       {/* Dropdown panel */}
       <div
-        className="absolute right-0 mt-2 w-[320px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141b]/95 shadow-[0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur"
+        className="absolute right-0 z-50 mt-2 w-[320px] overflow-hidden rounded-2xl border border-white/10 bg-[#0b141b]/95 shadow-[0_30px_80px_rgba(0,0,0,0.55)] backdrop-blur"
         role="menu"
         aria-label="Menu"
       >
