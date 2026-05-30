@@ -53,6 +53,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import Stripe from 'stripe';
 import { createClient } from '@supabase/supabase-js';
+import {
+  createSubscriptionPaymentFailedNotification,
+  createSubscriptionCancelledNotification,
+} from '@/lib/admin-notifications';
 import { linkStripeSubscription, cancelSubscription, updateSubscriptionTier } from '@/lib/db';
 
 export const dynamic = 'force-dynamic';
@@ -521,6 +525,16 @@ async function handleInvoicePaymentFailed(
   }
 
   console.log(`[stripe-webhook] invoice_payment_failed: ${invoice.id}`);
+
+  // Phase 4: non-fatal admin notification
+  createSubscriptionPaymentFailedNotification({
+    stripeInvoiceId: invoice.id,
+    stripeEventId:   event.id,
+    workspaceId:     resolved.workspaceId,
+    userId:          resolved.userId,
+    amountDue:       invoice.amount_due ?? 0,
+    currency:        invoice.currency || 'gbp',
+  }).catch((e) => console.warn('[stripe-webhook] payment_failed notification failed (non-fatal):', e));
 }
 
 async function handleSubscriptionUpdated(
@@ -613,6 +627,14 @@ async function handleSubscriptionDeleted(
   }
 
   console.log(`[stripe-webhook] subscription_deleted: ${sub.id}`);
+
+  // Phase 4: non-fatal admin notification
+  createSubscriptionCancelledNotification({
+    stripeSubscriptionId: sub.id,
+    stripeEventId:        event.id,
+    workspaceId:          workspaceId,
+    userId:               userId,
+  }).catch((e) => console.warn('[stripe-webhook] subscription_cancelled notification failed (non-fatal):', e));
 }
 
 async function handleChargeRefunded(

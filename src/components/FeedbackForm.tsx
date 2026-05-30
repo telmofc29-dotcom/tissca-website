@@ -10,6 +10,21 @@ interface FeedbackFormProps {
   onSubmit?: (success: boolean) => void;
 }
 
+// ─── Centralized light-surface form styles ────────────────────────────────────
+// The global body sets color: rgba(255,255,255,0.92) (white) for the dark TISSCA
+// theme. Tailwind Preflight sets color:inherit on form elements, so every input
+// that omits an explicit text colour inherits white — making text invisible on the
+// white modal background.  Always set bg, text, placeholder, and caret explicitly.
+const LT_INPUT =
+  'w-full px-3 py-2 bg-white text-gray-900 caret-gray-900 border border-gray-300 rounded-lg ' +
+  'placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+const LT_TEXTAREA =
+  'w-full px-3 py-2 bg-white text-gray-900 caret-gray-900 border border-gray-300 rounded-lg ' +
+  'placeholder:text-slate-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm';
+const LT_SELECT =
+  'w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg ' +
+  'focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+
 const AREA_KEYS: { key: string; section: FeedbackSection }[] = [
   { key: 'homepage', section: 'homepage' },
   { key: 'pricing', section: 'pricing' },
@@ -141,7 +156,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
       <select
         value={section}
         onChange={(e) => setSection(e.target.value as FeedbackSection)}
-        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm bg-white"
+        className={LT_SELECT}
       >
         <option value="">{labels.selectArea}</option>
         {AREA_KEYS.map(({ key, section: sec }) => (
@@ -160,7 +175,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
       placeholder={f.emailPlaceholder}
       value={email}
       onChange={(e) => setEmail(e.target.value)}
-      className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+      className={`${LT_INPUT} fb-autofill-light`}
     />
   );
 
@@ -195,7 +210,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 placeholder={f.headlinePlaceholder}
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className={LT_INPUT}
               />
             </div>
 
@@ -236,7 +251,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className={LT_TEXTAREA}
               />
             </div>
 
@@ -265,7 +280,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 placeholder={f.headlinePlaceholder}
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className={LT_INPUT}
               />
             </div>
 
@@ -278,7 +293,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className={LT_TEXTAREA}
               />
             </div>
 
@@ -324,7 +339,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 placeholder={f.headlinePlaceholder}
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className={LT_INPUT}
               />
             </div>
 
@@ -337,7 +352,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={4}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className={LT_TEXTAREA}
               />
             </div>
 
@@ -348,7 +363,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 value={benefit}
                 onChange={(e) => setBenefit(e.target.value)}
                 rows={2}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className={LT_TEXTAREA}
               />
             </div>
 
@@ -384,7 +399,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 placeholder={labels.reviewTitle}
                 value={headline}
                 onChange={(e) => setHeadline(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                className={LT_INPUT}
               />
             </div>
 
@@ -395,7 +410,7 @@ export default function FeedbackForm({ onClose, onSubmit }: FeedbackFormProps) {
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none text-sm"
+                className={LT_TEXTAREA}
               />
             </div>
 

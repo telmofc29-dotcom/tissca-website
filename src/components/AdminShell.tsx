@@ -102,7 +102,18 @@ export default function AdminShell({ children }: AdminShellProps) {
     loadUnread();
     // Poll every 30 seconds
     const interval = setInterval(loadUnread, 30_000);
-    return () => { cancelled = true; clearInterval(interval); };
+    // Refresh when browser tab regains focus (e.g. admin switches windows then returns)
+    const handleVisibility = () => { if (document.visibilityState === 'visible') loadUnread(); };
+    // Refresh immediately when the notifications page marks items as read/dismissed
+    const handleCountChanged = () => loadUnread();
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('admin-notif-count-changed', handleCountChanged as EventListener);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('admin-notif-count-changed', handleCountChanged as EventListener);
+    };
   }, []);
 
   // HARDEN (fail-closed): ensure pathname is always a string before using startsWith()
@@ -151,7 +162,7 @@ export default function AdminShell({ children }: AdminShellProps) {
                   {item.label}
                   {item.href === '/admin/notifications' && adminUnread > 0 && (
                     <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {adminUnread > 99 ? '99+' : adminUnread}
+                      {adminUnread > 9 ? '9+' : adminUnread}
                     </span>
                   )}
                 </span>
@@ -221,7 +232,7 @@ export default function AdminShell({ children }: AdminShellProps) {
                   {item.label}
                   {item.href === '/admin/notifications' && adminUnread > 0 && (
                     <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                      {adminUnread > 99 ? '99+' : adminUnread}
+                      {adminUnread > 9 ? '9+' : adminUnread}
                     </span>
                   )}
                 </span>
@@ -266,8 +277,8 @@ export default function AdminShell({ children }: AdminShellProps) {
                   <path d="M13.73 21a2 2 0 0 1-3.46 0" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
                 {adminUnread > 0 && (
-                  <span className="absolute -right-0.5 -top-0.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
-                    {adminUnread > 99 ? '99+' : adminUnread}
+                  <span className="absolute -top-1 -right-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold leading-none text-white ring-2 ring-white">
+                    {adminUnread > 9 ? '9+' : adminUnread}
                   </span>
                 )}
               </Link>

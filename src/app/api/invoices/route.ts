@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServerSupabaseClient } from '@/lib/supabase';
 import { validateCreateInvoice } from '@/lib/validators/invoiceSchemas';
 import { calculateInvoiceTotals } from '@/lib/invoiceCalculations';
+import { createInvoiceCreatedNotification } from '@/lib/admin-notifications';
 
 /**
  * GET /api/invoices
@@ -260,6 +261,16 @@ export async function POST(req: NextRequest) {
       await supabase.from('invoices').delete().eq('id', invoice.id);
       throw itemsError;
     }
+
+    // Phase 4: non-fatal admin notification
+    createInvoiceCreatedNotification({
+      invoiceId:     invoice.id,
+      invoiceNumber: invoice.invoice_number,
+      businessId:    invoice.business_id ?? null,
+      userId:        user.id,
+      total:         totals.total,
+      currency:      currency || 'GBP',
+    }).catch((e) => console.warn('[POST /api/invoices] notification failed (non-fatal):', e));
 
     return NextResponse.json(
       {

@@ -1,16 +1,20 @@
 // src/app/(admin)/admin/notifications/page.tsx
 //
 // PURPOSE:
-// Phase 2 admin notification centre.
+// Phase 4.5 enterprise notifications operations centre.
 // Reads from GET /api/admin/notifications (admin_notifications joined with platform_events).
-// Supports mark-read, mark-all-read, and dismiss — all persisted to DB.
+// Supports mark-read, mark-all-read, dismiss — all persisted to DB.
 //
-// Polling: refreshes every 30 seconds (same cadence as member notification hook).
-// No Supabase Realtime yet (Phase 3).
+// Features: severity visual hierarchy, critical alert pinning, detail drawer,
+// toast notifications (on poll), URL filter state persistence, search,
+// shimmer loading, relative timestamps, premium empty states.
+//
+// Architecture: preserves Phase 3 polling (30s), visibility refresh,
+// custom event dispatch — no backend changes.
 
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { getSupabaseClient } from '@/lib/supabase';
 
@@ -28,6 +32,7 @@ interface PlatformEvent {
   deep_link: string | null;
   metadata: Record<string, unknown>;
   workspace_id: string | null;
+  source?: string | null;
   occurred_at: string;
 }
 
@@ -45,90 +50,638 @@ interface AdminNotification {
   platform_events: PlatformEvent | null;
 }
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function severityBadge(severity?: string) {
-  if (!severity || severity === 'info') return null;
-  const map: Record<string, string> = {
-    critical: 'bg-red-100 text-red-700 border-red-200',
-    high:     'bg-orange-100 text-orange-700 border-orange-200',
-    medium:   'bg-yellow-100 text-yellow-700 border-yellow-200',
-    low:      'bg-gray-100 text-gray-600 border-gray-200',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-semibold border ${map[severity] ?? map.low}`}>
-      {severity}
-    </span>
-  );
+interface ToastItem {
+  id: string;
+  message: string;
+  severity: string;
+  notifId: string | null;
 }
 
-function moduleBadge(module?: string) {
-  if (!module) return null;
-  const map: Record<string, string> = {
-    feedback:     'bg-blue-100 text-blue-700',
-    crm:          'bg-green-100 text-green-700',
-    invoices:     'bg-amber-100 text-amber-700',
-    subscription: 'bg-purple-100 text-purple-700',
-    sync:         'bg-red-100 text-red-700',
-    release:      'bg-slate-100 text-slate-600',
-  };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${map[module] ?? 'bg-gray-100 text-gray-600'}`}>
-      {module}
-    </span>
-  );
-}
-
-function moduleIcon(module?: string): string {
-  switch (module) {
-    case 'feedback':     return '💬';
-    case 'crm':          return '👥';
-    case 'invoices':     return '🧾';
-    case 'subscription': return '💳';
-    case 'sync':         return '🔄';
-    case 'release':      return '🚀';
-    case 'ai':           return '🤖';
-    default:             return '📩';
-  }
-}
-
-function timeAgo(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString('en-GB');
-}
-
-function eventTypeLabel(eventType?: string): string {
-  if (!eventType) return 'Event';
-  return eventType.replace(/\./g, ' › ').replace(/_/g, ' ');
-}
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Module configuration ─────────────────────────────────────────────────────
 
 const MODULE_TABS = [
-  { key: 'all',          label: 'All',           icon: '🔔' },
-  { key: 'feedback',     label: 'Feedback',       icon: '💬' },
-  { key: 'crm',          label: 'CRM',            icon: '👥' },
-  { key: 'invoices',     label: 'Invoices',       icon: '🧾' },
-  { key: 'subscription', label: 'Subscriptions',  icon: '💳' },
-  { key: 'sync',         label: 'Sync',           icon: '🔄' },
+  { key: 'all',          label: 'All',          icon: '🔔' },
+  { key: 'feedback',     label: 'Feedback',      icon: '💬' },
+  { key: 'crm',          label: 'CRM',           icon: '👥' },
+  { key: 'invoices',     label: 'Invoices',      icon: '🧾' },
+  { key: 'subscription', label: 'Subscriptions', icon: '💳' },
+  { key: 'sync',         label: 'Sync',          icon: '🔄' },
 ] as const;
 
 type ModuleFilter = typeof MODULE_TABS[number]['key'];
 
+const MODULE_CONFIG: Record<string, { icon: string; badgeCls: string; label: string }> = {
+  feedback:     { icon: '💬', badgeCls: 'bg-blue-100 text-blue-700',      label: 'Feedback' },
+  crm:          { icon: '👥', badgeCls: 'bg-green-100 text-green-700',    label: 'CRM' },
+  invoices:     { icon: '🧾', badgeCls: 'bg-amber-100 text-amber-800',    label: 'Invoices' },
+  subscription: { icon: '💳', badgeCls: 'bg-purple-100 text-purple-700',  label: 'Subscriptions' },
+  sync:         { icon: '🔄', badgeCls: 'bg-rose-100 text-rose-700',      label: 'Sync' },
+  release:      { icon: '🚀', badgeCls: 'bg-slate-100 text-slate-700',    label: 'Release' },
+  ai:           { icon: '🤖', badgeCls: 'bg-indigo-100 text-indigo-700',  label: 'AI' },
+  planner:      { icon: '📅', badgeCls: 'bg-teal-100 text-teal-700',      label: 'Planner' },
+  chat:         { icon: '💬', badgeCls: 'bg-pink-100 text-pink-700',      label: 'Chat' },
+  quotes:       { icon: '📋', badgeCls: 'bg-yellow-100 text-yellow-800',  label: 'Quotes' },
+  accountant:   { icon: '📊', badgeCls: 'bg-emerald-100 text-emerald-700',label: 'Accountant' },
+  admin:        { icon: '🛡️', badgeCls: 'bg-gray-100 text-gray-700',      label: 'Admin' },
+};
+
+function getModuleConfig(module?: string) {
+  return MODULE_CONFIG[module ?? ''] ?? { icon: '📩', badgeCls: 'bg-gray-100 text-gray-600', label: module ?? 'System' };
+}
+
+// ─── Severity configuration ───────────────────────────────────────────────────
+
+interface SeverityConfig {
+  borderCls: string;
+  bgUnread: string;
+  dotCls: string;
+  dotPulse: boolean;
+  badgeBg: string;
+  badgeText: string;
+  label: string;
+}
+
+const SEVERITY_MAP: Record<string, SeverityConfig> = {
+  critical: {
+    borderCls: 'border-l-red-500',
+    bgUnread:  'bg-red-50/50',
+    dotCls:    'bg-red-500',
+    dotPulse:  true,
+    badgeBg:   'bg-red-100',
+    badgeText: 'text-red-700',
+    label:     'Critical',
+  },
+  high: {
+    borderCls: 'border-l-orange-400',
+    bgUnread:  'bg-orange-50/40',
+    dotCls:    'bg-orange-400',
+    dotPulse:  false,
+    badgeBg:   'bg-orange-100',
+    badgeText: 'text-orange-700',
+    label:     'High',
+  },
+  medium: {
+    borderCls: 'border-l-blue-400',
+    bgUnread:  'bg-blue-50/30',
+    dotCls:    'bg-blue-400',
+    dotPulse:  false,
+    badgeBg:   'bg-blue-100',
+    badgeText: 'text-blue-700',
+    label:     'Medium',
+  },
+  low: {
+    borderCls: 'border-l-gray-300',
+    bgUnread:  'bg-gray-50/40',
+    dotCls:    'bg-gray-300',
+    dotPulse:  false,
+    badgeBg:   'bg-gray-100',
+    badgeText: 'text-gray-500',
+    label:     'Low',
+  },
+  info: {
+    borderCls: 'border-l-gray-200',
+    bgUnread:  'bg-gray-50/20',
+    dotCls:    'bg-gray-200',
+    dotPulse:  false,
+    badgeBg:   'bg-gray-50',
+    badgeText: 'text-gray-400',
+    label:     'Info',
+  },
+};
+
+function getSeverityConfig(severity?: string): SeverityConfig {
+  return SEVERITY_MAP[severity ?? ''] ?? SEVERITY_MAP.info;
+}
+
+// ─── Helper functions ─────────────────────────────────────────────────────────
+
+function timeAgo(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.floor(diff / 60_000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  if (hours < 48) return 'yesterday';
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function formatEventType(eventType?: string): string {
+  if (!eventType) return '';
+  return eventType.replace(/\./g, ' › ').replace(/_/g, ' ');
+}
+
+function getEventIcon(eventType?: string, module?: string): string {
+  const t = eventType ?? '';
+  if (t.includes('payment_failed')) return '⚠️';
+  if (t.includes('cancel'))         return '🚫';
+  if (t.includes('invoice'))        return '🧾';
+  if (t.includes('feedback'))       return '💬';
+  if (t.includes('lead'))           return '🎯';
+  if (t.includes('job'))            return '🔧';
+  if (t.includes('sync'))           return '🔄';
+  if (t.includes('release') || t.includes('deploy')) return '🚀';
+  return getModuleConfig(module).icon;
+}
+
+// ─── Skeleton loading card ────────────────────────────────────────────────────
+
+function SkeletonCard() {
+  return (
+    <div className="flex items-start gap-4 px-5 py-4 border-l-4 border-l-gray-100 animate-pulse">
+      <div className="flex-shrink-0 flex flex-col items-center gap-2 pt-0.5">
+        <div className="h-2.5 w-2.5 rounded-full bg-gray-100" />
+        <div className="h-6 w-6 rounded-full bg-gray-100" />
+      </div>
+      <div className="flex-1 space-y-2.5">
+        <div className="flex gap-1.5">
+          <div className="h-5 w-16 rounded-full bg-gray-100" />
+          <div className="h-5 w-12 rounded-full bg-gray-100" />
+        </div>
+        <div className="h-4 w-3/4 rounded bg-gray-100" />
+        <div className="h-3 w-1/2 rounded bg-gray-100" />
+        <div className="h-3 w-24 rounded bg-gray-100" />
+      </div>
+      <div className="flex-shrink-0 space-y-2">
+        <div className="h-7 w-16 rounded-lg bg-gray-100" />
+        <div className="h-7 w-16 rounded-lg bg-gray-100" />
+      </div>
+    </div>
+  );
+}
+
+// ─── Notification Card ────────────────────────────────────────────────────────
+
+interface CardProps {
+  notif: AdminNotification;
+  onMarkRead: (id: string) => void;
+  onDismiss:  (id: string) => void;
+  onOpen:     (notif: AdminNotification) => void;
+}
+
+function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
+  const evt     = notif.platform_events;
+  const sev     = getSeverityConfig(evt?.severity);
+  const mod     = getModuleConfig(evt?.module);
+  const icon    = getEventIcon(evt?.event_type, evt?.module);
+  const isUnread = !notif.is_read;
+
+  return (
+    <div
+      className={[
+        'group relative flex items-start gap-4 px-5 py-4 border-l-4 transition-colors duration-100 cursor-pointer',
+        sev.borderCls,
+        isUnread ? sev.bgUnread : 'bg-white',
+        'hover:bg-gray-50/80',
+      ].join(' ')}
+      onClick={() => onOpen(notif)}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onOpen(notif); }
+      }}
+      aria-label={`Notification: ${evt?.title ?? 'Untitled'}`}
+    >
+      {/* Severity dot + module icon */}
+      <div className="flex-shrink-0 flex flex-col items-center gap-1.5 pt-0.5">
+        <div className="relative flex items-center justify-center w-3 h-3">
+          {sev.dotPulse && isUnread && (
+            <span className="absolute inline-flex h-3 w-3 rounded-full bg-red-400 opacity-75 animate-ping" />
+          )}
+          <span className={`relative inline-flex h-2.5 w-2.5 rounded-full ${sev.dotCls}`} />
+        </div>
+        <span className={`text-lg leading-none ${isUnread ? '' : 'opacity-40'}`} aria-hidden="true">
+          {icon}
+        </span>
+      </div>
+
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        {/* Badge row */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-1.5">
+          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${mod.badgeCls}`}>
+            {mod.label}
+          </span>
+          {evt?.severity && evt.severity !== 'info' && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
+              {sev.label}
+            </span>
+          )}
+          {isUnread && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-blue-600 text-white tracking-wide">
+              NEW
+            </span>
+          )}
+          {notif.escalated && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-rose-600 text-white">
+              ESCALATED
+            </span>
+          )}
+        </div>
+
+        {/* Title */}
+        <p className={`text-sm leading-snug ${isUnread ? 'font-semibold text-gray-900' : 'font-medium text-gray-500'}`}>
+          {evt?.title ?? '(no title)'}
+        </p>
+
+        {/* Event type */}
+        {evt?.event_type && (
+          <p className="text-[11px] text-gray-400 mt-0.5 font-mono">{formatEventType(evt.event_type)}</p>
+        )}
+
+        {/* Body preview */}
+        {evt?.body && (
+          <p className="text-sm text-gray-600 mt-1 line-clamp-2 leading-relaxed">{evt.body}</p>
+        )}
+
+        {/* Meta row */}
+        <div className="flex flex-wrap items-center gap-3 mt-2">
+          <span className="text-[11px] text-gray-400">{timeAgo(evt?.occurred_at ?? notif.created_at)}</span>
+          {evt?.source && (
+            <span className="text-[11px] text-gray-300 font-mono">{evt.source}</span>
+          )}
+          {evt?.workspace_id && (
+            <span
+              className="text-[11px] text-gray-300 truncate max-w-[120px]"
+              title={evt.workspace_id}
+            >
+              ws:{evt.workspace_id.slice(0, 8)}…
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Actions — always visible on mobile, hover-reveal on desktop */}
+      <div
+        className="flex-shrink-0 flex flex-col items-end gap-1.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity duration-100"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {evt?.deep_link && (
+          <Link
+            href={evt.deep_link}
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-blue-400"
+          >
+            Open →
+          </Link>
+        )}
+        {isUnread && (
+          <button
+            onClick={() => onMarkRead(notif.id)}
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-gray-300"
+            aria-label="Mark as read"
+          >
+            ✓ Read
+          </button>
+        )}
+        <button
+          onClick={() => onDismiss(notif.id)}
+          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-rose-400 border border-rose-100 rounded-lg hover:bg-rose-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-rose-200"
+          aria-label="Dismiss notification"
+        >
+          Dismiss
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detail Drawer ────────────────────────────────────────────────────────────
+
+interface DrawerProps {
+  notif:       AdminNotification | null;
+  onClose:     () => void;
+  onMarkRead:  (id: string) => void;
+  onDismiss:   (id: string) => void;
+}
+
+function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
+  const [jsonExpanded, setJsonExpanded] = useState(false);
+
+  useEffect(() => { setJsonExpanded(false); }, [notif?.id]);
+
+  useEffect(() => {
+    if (!notif) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [notif, onClose]);
+
+  if (!notif) return null;
+
+  const evt             = notif.platform_events;
+  const sev             = getSeverityConfig(evt?.severity);
+  const mod             = getModuleConfig(evt?.module);
+  const icon            = getEventIcon(evt?.event_type, evt?.module);
+  const metadataEntries = evt?.metadata ? Object.entries(evt.metadata) : [];
+
+  const metaFields: Array<{ label: string; value: string | null | undefined; mono?: boolean; truncate?: boolean }> = [
+    { label: 'Occurred',    value: evt?.occurred_at ? new Date(evt.occurred_at).toLocaleString('en-GB') : null },
+    { label: 'Received',    value: notif.created_at ? new Date(notif.created_at).toLocaleString('en-GB') : null },
+    { label: 'Source',      value: evt?.source },
+    { label: 'Event ID',    value: evt?.id,            mono: true, truncate: true },
+    { label: 'Module',      value: evt?.module },
+    { label: 'Workspace',   value: evt?.workspace_id,  mono: true, truncate: true },
+    { label: 'Entity type', value: evt?.entity_type },
+    { label: 'Entity ID',   value: evt?.entity_id,     mono: true, truncate: true },
+    { label: 'Status',      value: notif.is_read ? 'Read' : 'Unread' },
+  ];
+
+  return (
+    <>
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/25 z-40 backdrop-blur-[1px]"
+        onClick={onClose}
+        aria-hidden="true"
+      />
+
+      {/* Drawer panel */}
+      <div
+        className="fixed inset-y-0 right-0 z-50 w-full max-w-md bg-white shadow-2xl flex flex-col overflow-hidden"
+        role="dialog"
+        aria-modal="true"
+        aria-label="Notification details"
+      >
+        {/* Header */}
+        <div className={`flex-shrink-0 flex items-start justify-between px-6 py-5 border-b border-gray-100 border-l-4 ${sev.borderCls}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <span className="text-2xl flex-shrink-0" aria-hidden="true">{icon}</span>
+            <div className="min-w-0">
+              <div className="flex flex-wrap gap-1.5 mb-1">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${mod.badgeCls}`}>
+                  {mod.label}
+                </span>
+                {evt?.severity && evt.severity !== 'info' && (
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
+                    {sev.label}
+                  </span>
+                )}
+              </div>
+              <p className="text-[11px] text-gray-400 font-mono truncate">{formatEventType(evt?.event_type)}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            className="flex-shrink-0 ml-3 flex items-center justify-center w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+            aria-label="Close details"
+          >
+            ✕
+          </button>
+        </div>
+
+        {/* Scrollable body */}
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-5">
+          {/* Title + body */}
+          <div>
+            <h3 className="text-base font-semibold text-gray-900 leading-snug">
+              {evt?.title ?? '(no title)'}
+            </h3>
+            {evt?.body && (
+              <p className="mt-2 text-sm text-gray-600 leading-relaxed">{evt.body}</p>
+            )}
+          </div>
+
+          {/* Key fields */}
+          <div className="rounded-xl border border-gray-100 bg-gray-50 divide-y divide-gray-100 overflow-hidden">
+            {metaFields
+              .filter(f => f.value)
+              .map(({ label, value, mono, truncate }) => (
+                <div key={label} className="flex items-start justify-between gap-4 px-4 py-2.5">
+                  <span className="text-xs text-gray-500 flex-shrink-0 w-24">{label}</span>
+                  <span
+                    className={`text-xs text-gray-900 text-right ${mono ? 'font-mono' : ''} ${truncate ? 'truncate max-w-[180px]' : ''}`}
+                    title={truncate ? String(value) : undefined}
+                  >
+                    {String(value)}
+                  </span>
+                </div>
+              ))}
+          </div>
+
+          {/* Metadata section */}
+          {metadataEntries.length > 0 && (
+            <div>
+              <button
+                onClick={() => setJsonExpanded(v => !v)}
+                className="flex items-center gap-1.5 text-sm font-medium text-gray-700 hover:text-gray-900 transition-colors focus:outline-none"
+                aria-expanded={jsonExpanded}
+              >
+                <span>{jsonExpanded ? '▾' : '▸'}</span>
+                <span>Metadata ({metadataEntries.length} field{metadataEntries.length !== 1 ? 's' : ''})</span>
+              </button>
+
+              {!jsonExpanded && (
+                <div className="mt-2 rounded-xl border border-gray-100 bg-gray-50 divide-y divide-gray-100 overflow-hidden">
+                  {metadataEntries.slice(0, 5).map(([k, v]) => (
+                    <div key={k} className="flex items-start justify-between gap-4 px-4 py-2">
+                      <span className="text-xs text-gray-500 font-mono flex-shrink-0">{k}</span>
+                      <span className="text-xs text-gray-700 font-mono text-right truncate max-w-[180px]">
+                        {typeof v === 'object' ? JSON.stringify(v) : String(v ?? '')}
+                      </span>
+                    </div>
+                  ))}
+                  {metadataEntries.length > 5 && (
+                    <div className="px-4 py-2 text-xs text-gray-400">
+                      +{metadataEntries.length - 5} more — expand to view all
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {jsonExpanded && (
+                <div className="mt-2 rounded-xl border border-gray-200 bg-gray-900 p-4 overflow-x-auto">
+                  <pre className="text-xs text-green-400 font-mono whitespace-pre-wrap break-words">
+                    {JSON.stringify(evt?.metadata, null, 2)}
+                  </pre>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Deep link */}
+          {evt?.deep_link && (
+            <div>
+              <p className="text-xs text-gray-500 mb-2">Deep link</p>
+              <Link
+                href={evt.deep_link}
+                className="inline-flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+              >
+                Open in context →
+              </Link>
+            </div>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="flex-shrink-0 flex items-center gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60">
+          {!notif.is_read && (
+            <button
+              onClick={() => { onMarkRead(notif.id); onClose(); }}
+              className="flex-1 px-4 py-2 text-sm font-medium text-gray-700 border border-gray-200 rounded-xl hover:bg-white transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300"
+            >
+              ✓ Mark read
+            </button>
+          )}
+          <button
+            onClick={() => { onDismiss(notif.id); onClose(); }}
+            className="flex-1 px-4 py-2 text-sm font-medium text-rose-600 border border-rose-200 rounded-xl hover:bg-rose-50 transition-colors focus:outline-none focus:ring-2 focus:ring-rose-300"
+          >
+            Dismiss
+          </button>
+        </div>
+      </div>
+    </>
+  );
+}
+
+// ─── Toast bar ────────────────────────────────────────────────────────────────
+
+interface ToastBarProps {
+  toasts:       ToastItem[];
+  onDismiss:    (id: string) => void;
+  onClickToast: (notifId: string | null) => void;
+}
+
+function ToastBar({ toasts, onDismiss, onClickToast }: ToastBarProps) {
+  if (toasts.length === 0) return null;
+  return (
+    <div className="fixed bottom-6 right-6 z-[70] flex flex-col items-end gap-2 pointer-events-none">
+      {toasts.map((t) => {
+        const sev = getSeverityConfig(t.severity);
+        return (
+          <div
+            key={t.id}
+            className={[
+              'pointer-events-auto flex items-start gap-3 w-full max-w-xs rounded-xl border bg-white shadow-lg px-4 py-3 border-l-4',
+              sev.borderCls,
+            ].join(' ')}
+          >
+            <span className={`flex-shrink-0 inline-flex h-2 w-2 rounded-full mt-1.5 ${sev.dotCls}`} />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-gray-900 leading-snug truncate">{t.message}</p>
+              <p className="text-xs text-gray-400 mt-0.5">New notification</p>
+            </div>
+            <div className="flex-shrink-0 flex items-center gap-2">
+              {t.notifId && (
+                <button
+                  onClick={() => onClickToast(t.notifId)}
+                  className="text-xs font-medium text-blue-600 hover:text-blue-700 focus:outline-none"
+                >
+                  View
+                </button>
+              )}
+              <button
+                onClick={() => onDismiss(t.id)}
+                className="text-gray-300 hover:text-gray-500 focus:outline-none text-sm leading-none"
+                aria-label="Dismiss"
+              >
+                ✕
+              </button>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+interface EmptyStateProps {
+  filter:        string;
+  severityFilter: string;
+  unreadOnly:    boolean;
+  hasItems:      boolean;
+  onClear:       () => void;
+}
+
+function EmptyState({ filter, severityFilter, unreadOnly, hasItems, onClear }: EmptyStateProps) {
+  const hasActiveFilters = filter !== 'all' || Boolean(severityFilter) || unreadOnly;
+
+  if (!hasItems) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white py-16 px-8 text-center">
+        <div className="text-5xl mb-4" aria-hidden="true">🎉</div>
+        <h3 className="text-base font-semibold text-gray-700 mb-1">Inbox clear</h3>
+        <p className="text-sm text-gray-400 max-w-xs mx-auto">
+          No notifications yet. They&apos;ll appear here when feedback is submitted, invoices are created, or subscription events occur.
+        </p>
+      </div>
+    );
+  }
+
+  if (hasActiveFilters) {
+    return (
+      <div className="rounded-2xl border border-gray-100 bg-white py-12 px-8 text-center">
+        <div className="text-4xl mb-3" aria-hidden="true">🔍</div>
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">No matching notifications</h3>
+        <p className="text-xs text-gray-400 mb-4">Try adjusting the filters above.</p>
+        <button
+          onClick={onClear}
+          className="inline-flex items-center px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+        >
+          Clear filters
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white py-12 px-8 text-center">
+      <div className="text-4xl mb-3" aria-hidden="true">✅</div>
+      <h3 className="text-sm font-semibold text-gray-700 mb-1">Nothing to show</h3>
+      <p className="text-xs text-gray-400">All notifications in this view have been handled.</p>
+    </div>
+  );
+}
+
+
 export default function AdminNotificationsPage() {
-  const [items, setItems]         = useState<AdminNotification[]>([]);
+  const [items, setItems]             = useState<AdminNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [filter, setFilter]       = useState<ModuleFilter>('all');
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [filter, setFilter]           = useState<ModuleFilter>('all');
+  const [severityFilter, setSeverityFilter] = useState('');
+  const [unreadOnly, setUnreadOnly]   = useState(false);
+  const [showDismissed, setShowDismissed] = useState(false);
+  const [search, setSearch]           = useState('');
+  const [selectedNotif, setSelectedNotif] = useState<AdminNotification | null>(null);
+  const [toasts, setToasts]           = useState<ToastItem[]>([]);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
+  const [refreshing, setRefreshing]   = useState(false);
+
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevIdsRef   = useRef<Set<string> | null>(null);
+
+  // ── URL state persistence ─────────────────────────────────────────────────
+
+  // Read filter params from URL on mount (refresh-safe)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const mod = params.get('module');
+    if (mod && MODULE_TABS.some(t => t.key === mod)) setFilter(mod as ModuleFilter);
+    const sev = params.get('severity') ?? '';
+    if (sev) setSeverityFilter(sev);
+    if (params.get('unread') === 'true') setUnreadOnly(true);
+    if (params.get('dismissed') === 'true') setShowDismissed(true);
+    const q = params.get('q') ?? '';
+    if (q) setSearch(q);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Sync filter state back to URL
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (filter !== 'all')  params.set('module', filter);
+    if (severityFilter)    params.set('severity', severityFilter);
+    if (unreadOnly)        params.set('unread', 'true');
+    if (showDismissed)     params.set('dismissed', 'true');
+    if (search)            params.set('q', search);
+    const qs = params.toString();
+    window.history.replaceState(null, '', qs ? `?${qs}` : window.location.pathname);
+  }, [filter, severityFilter, unreadOnly, showDismissed, search]);
 
   // ── Auth token helper ─────────────────────────────────────────────────────
 
@@ -146,8 +699,12 @@ export default function AdminNotificationsPage() {
       const token = await getToken();
       if (!token) { setError('Not authenticated'); setLoading(false); return; }
 
+      const params = new URLSearchParams({ limit: '100' });
+      if (unreadOnly)    params.set('unread',    'true');
+      if (showDismissed) params.set('dismissed', 'true');
+
       const [listRes, countRes] = await Promise.all([
-        fetch('/api/admin/notifications?limit=100', {
+        fetch(`/api/admin/notifications?${params}`, {
           headers: { Authorization: `Bearer ${token}` },
         }),
         fetch('/api/admin/notifications/count', {
@@ -162,37 +719,64 @@ export default function AdminNotificationsPage() {
       }
 
       const listJson = await listRes.json() as { notifications?: AdminNotification[] };
-      setItems(listJson.notifications ?? []);
+      const newItems = listJson.notifications ?? [];
+      setItems(newItems);
       setError('');
+
+      // Toast detection: show on new unread items found since last poll
+      if (prevIdsRef.current !== null) {
+        const prevIds = prevIdsRef.current;
+        const newOnes = newItems.filter(n => !prevIds.has(n.id) && !n.is_read);
+        if (newOnes.length > 0) {
+          const first  = newOnes[0];
+          const evt    = first.platform_events;
+          const toastId = `t-${Date.now()}`;
+          const msg = newOnes.length === 1
+            ? (evt?.title ?? 'New notification')
+            : `${newOnes.length} new notifications`;
+          setToasts(prev => [
+            ...prev.slice(-2),
+            { id: toastId, message: msg, severity: evt?.severity ?? 'info', notifId: first.id },
+          ]);
+          setTimeout(() => setToasts(prev => prev.filter(t => t.id !== toastId)), 5000);
+        }
+      }
+      prevIdsRef.current = new Set(newItems.map(n => n.id));
 
       if (countRes.ok) {
         const countJson = await countRes.json() as { count?: number };
         setUnreadCount(countJson.count ?? 0);
       }
+
+      setLastRefreshed(new Date());
     } catch {
       setError('Unable to load. Check your connection.');
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
-  }, [getToken]);
+  }, [getToken, unreadOnly, showDismissed]);
 
   // Initial load + 30s polling
   useEffect(() => {
     setLoading(true);
     load();
     pollTimerRef.current = setInterval(load, 30_000);
-    return () => {
-      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    };
+    return () => { if (pollTimerRef.current) clearInterval(pollTimerRef.current); };
   }, [load]);
 
-  // ── Actions (persisted to DB) ─────────────────────────────────────────────
+  // Refresh when tab regains focus
+  useEffect(() => {
+    const handleVisibility = () => { if (document.visibilityState === 'visible') load(); };
+    document.addEventListener('visibilitychange', handleVisibility);
+    return () => document.removeEventListener('visibilitychange', handleVisibility);
+  }, [load]);
+
+  // ── Actions ───────────────────────────────────────────────────────────────
 
   const markRead = useCallback(async (notifId: string) => {
-    setItems((prev) =>
-      prev.map((n) => n.id === notifId ? { ...n, is_read: true } : n),
-    );
-    setUnreadCount((c) => Math.max(0, c - 1));
+    setItems(prev => prev.map(n => n.id === notifId ? { ...n, is_read: true } : n));
+    setUnreadCount(c => Math.max(0, c - 1));
 
     const token = await getToken();
     if (!token) return;
@@ -200,11 +784,15 @@ export default function AdminNotificationsPage() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) load();
+    if (res.ok) {
+      window.dispatchEvent(new CustomEvent('admin-notif-count-changed'));
+    } else {
+      load();
+    }
   }, [getToken, load]);
 
   const markAllRead = useCallback(async () => {
-    setItems((prev) => prev.map((n) => ({ ...n, is_read: true })));
+    setItems(prev => prev.map(n => ({ ...n, is_read: true })));
     setUnreadCount(0);
 
     const token = await getToken();
@@ -213,13 +801,17 @@ export default function AdminNotificationsPage() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) load();
+    if (res.ok) {
+      window.dispatchEvent(new CustomEvent('admin-notif-count-changed'));
+    } else {
+      load();
+    }
   }, [getToken, load]);
 
   const dismiss = useCallback(async (notifId: string) => {
-    const wasUnread = items.find((n) => n.id === notifId)?.is_read === false;
-    setItems((prev) => prev.filter((n) => n.id !== notifId));
-    if (wasUnread) setUnreadCount((c) => Math.max(0, c - 1));
+    const wasUnread = items.find(n => n.id === notifId)?.is_read === false;
+    setItems(prev => prev.filter(n => n.id !== notifId));
+    if (wasUnread) setUnreadCount(c => Math.max(0, c - 1));
 
     const token = await getToken();
     if (!token) return;
@@ -227,205 +819,328 @@ export default function AdminNotificationsPage() {
       method: 'PATCH',
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!res.ok) load();
+    if (res.ok) {
+      window.dispatchEvent(new CustomEvent('admin-notif-count-changed'));
+    } else {
+      load();
+    }
   }, [getToken, load, items]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
-  const visible = filter === 'all'
-    ? items
-    : items.filter((n) => n.platform_events?.module === filter);
+  const visible = useMemo(() => {
+    let filtered = items
+      .filter(n => filter === 'all' || n.platform_events?.module === filter)
+      .filter(n => !severityFilter || n.platform_events?.severity === severityFilter);
+    if (search.trim()) {
+      const q = search.toLowerCase().trim();
+      filtered = filtered.filter(n => {
+        const evt = n.platform_events;
+        return (
+          evt?.title?.toLowerCase().includes(q) ||
+          evt?.body?.toLowerCase().includes(q) ||
+          evt?.module?.toLowerCase().includes(q) ||
+          evt?.event_type?.toLowerCase().includes(q)
+        );
+      });
+    }
+    return filtered;
+  }, [items, filter, severityFilter, search]);
+
+  const criticalItems = useMemo(
+    () => visible.filter(n => n.platform_events?.severity === 'critical'),
+    [visible],
+  );
+
+  const normalItems = useMemo(
+    () => visible.filter(n => n.platform_events?.severity !== 'critical'),
+    [visible],
+  );
 
   const tabCount = (key: ModuleFilter) =>
     key === 'all'
       ? items.length
-      : items.filter((n) => n.platform_events?.module === key).length;
+      : items.filter(n => n.platform_events?.module === key).length;
+
+  const hasActiveFilters = filter !== 'all' || Boolean(severityFilter) || unreadOnly || showDismissed || Boolean(search);
+
+  const clearFilters = () => {
+    setFilter('all');
+    setSeverityFilter('');
+    setUnreadOnly(false);
+    setShowDismissed(false);
+    setSearch('');
+  };
+
+  const handleOpenNotif = useCallback((notif: AdminNotification) => {
+    setSelectedNotif(notif);
+    if (!notif.is_read) markRead(notif.id);
+  }, [markRead]);
+
+  const handleToastClick = useCallback((notifId: string | null) => {
+    if (!notifId) return;
+    const n = items.find(x => x.id === notifId);
+    if (n) handleOpenNotif(n);
+  }, [items, handleOpenNotif]);
 
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <>
+      <div className="space-y-5">
 
-      {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4">
-        <div>
-          <h2 className="text-2xl font-bold text-gray-900">Notifications</h2>
-          <p className="text-sm text-gray-500 mt-1">
-            {loading
-              ? 'Loading…'
-              : unreadCount > 0
-                ? `${unreadCount} unread item${unreadCount !== 1 ? 's' : ''}`
-                : 'All caught up — inbox clear'}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {unreadCount > 0 && (
-            <button
-              onClick={markAllRead}
-              className="px-4 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
-            >
-              Mark all read
-            </button>
-          )}
-          <button
-            onClick={() => { setLoading(true); load(); }}
-            className="px-4 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors"
-          >
-            Refresh
-          </button>
-          <Link
-            href="/admin/feedback"
-            className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors"
-          >
-            Feedback dashboard →
-          </Link>
-        </div>
-      </div>
-
-      {/* Module tabs */}
-      <div className="flex flex-wrap gap-2">
-        {MODULE_TABS.map(({ key, label, icon }) => {
-          const count = tabCount(key);
-          return (
-            <button
-              key={key}
-              onClick={() => setFilter(key)}
-              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${
-                filter === key
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
-              }`}
-            >
-              <span>{icon}</span>
-              <span>{label}</span>
-              {count > 0 && (
-                <span className={`ml-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
-                  filter === key ? 'bg-white/25 text-white' : 'bg-gray-300 text-gray-700'
-                }`}>
-                  {count}
+        {/* ── Header ─────────────────────────────────────────────────────── */}
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 tracking-tight">Notifications</h2>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {loading
+                ? 'Loading…'
+                : unreadCount > 0
+                  ? `${unreadCount} unread · ${items.length} total`
+                  : 'All caught up'}
+              {lastRefreshed && !loading && (
+                <span className="ml-2 text-gray-300">
+                  · refreshed {timeAgo(lastRefreshed.toISOString())}
                 </span>
               )}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Error */}
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">
-          {error}
-        </div>
-      )}
-
-      {/* Loading */}
-      {loading && !error && (
-        <div className="py-12 text-center text-gray-400 text-sm">Loading…</div>
-      )}
-
-      {/* Empty */}
-      {!loading && !error && visible.length === 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white py-16 text-center">
-          <div className="text-4xl mb-3">🎉</div>
-          <p className="text-gray-500 text-sm">
-            No notifications{filter !== 'all' ? ` in ${filter}` : ''}.
-          </p>
-          {items.length === 0 && (
-            <p className="text-gray-400 text-xs mt-2">
-              Notifications appear here when feedback is submitted or platform events occur.
             </p>
-          )}
-        </div>
-      )}
+          </div>
 
-      {/* Notification list */}
-      {!loading && !error && visible.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white divide-y divide-gray-100 overflow-hidden">
-          {visible.map((notif) => {
-            const evt = notif.platform_events;
-            return (
-              <div
-                key={notif.id}
-                className={`flex items-start gap-4 px-5 py-4 transition-colors ${
-                  notif.is_read ? 'bg-white' : 'bg-blue-50/40'
-                }`}
+          <div className="flex flex-wrap items-center gap-2">
+            {unreadCount > 0 && (
+              <button
+                onClick={markAllRead}
+                className="px-3.5 py-2 text-sm font-medium text-blue-600 border border-blue-200 rounded-xl hover:bg-blue-50 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
               >
-                {/* Module icon */}
-                <div className={`flex-shrink-0 text-2xl mt-0.5 ${notif.is_read ? 'opacity-40' : ''}`}>
-                  {moduleIcon(evt?.module)}
+                ✓ Mark all read
+              </button>
+            )}
+            <button
+              onClick={() => { setRefreshing(true); load(); }}
+              disabled={refreshing}
+              className="px-3.5 py-2 text-sm font-medium text-gray-600 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
+              aria-label="Refresh notifications"
+            >
+              {refreshing ? '↻ Refreshing…' : '↻ Refresh'}
+            </button>
+            <Link
+              href="/admin/feedback"
+              className="px-3.5 py-2 text-sm font-medium text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-400"
+            >
+              Feedback →
+            </Link>
+          </div>
+        </div>
+
+        {/* ── Filter toolbar ──────────────────────────────────────────────── */}
+        <div className="space-y-2.5">
+
+          {/* Module tabs */}
+          <div className="flex flex-wrap gap-1.5">
+            {MODULE_TABS.map(({ key, label, icon }) => {
+              const count    = tabCount(key);
+              const isActive = filter === key;
+              return (
+                <button
+                  key={key}
+                  onClick={() => setFilter(key)}
+                  aria-pressed={isActive}
+                  className={[
+                    'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    isActive
+                      ? 'bg-gray-900 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200',
+                  ].join(' ')}
+                >
+                  <span aria-hidden="true">{icon}</span>
+                  <span>{label}</span>
+                  {count > 0 && (
+                    <span className={`ml-0.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full px-1 text-[10px] font-bold ${
+                      isActive ? 'bg-white/25 text-white' : 'bg-gray-300 text-gray-700'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Secondary filter row */}
+          <div className="flex flex-wrap items-center gap-2">
+
+            {/* Search */}
+            <input
+              type="search"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search…"
+              className="px-3 py-1.5 rounded-full text-sm border border-gray-200 bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-400 w-40 sm:w-52"
+              aria-label="Search notifications"
+            />
+
+            {/* Severity */}
+            <select
+              value={severityFilter}
+              onChange={e => setSeverityFilter(e.target.value)}
+              className="px-3 py-1.5 rounded-full text-sm font-medium border border-gray-200 bg-white text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-400 cursor-pointer"
+              aria-label="Filter by severity"
+            >
+              <option value="">All severities</option>
+              <option value="critical">🔴 Critical</option>
+              <option value="high">🟠 High</option>
+              <option value="medium">🟡 Medium</option>
+              <option value="low">⚪ Low</option>
+              <option value="info">ℹ️ Info</option>
+            </select>
+
+            {/* Unread toggle */}
+            <button
+              onClick={() => setUnreadOnly(v => !v)}
+              aria-pressed={unreadOnly}
+              className={[
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors focus:outline-none focus:ring-2 focus:ring-blue-300',
+                unreadOnly
+                  ? 'bg-blue-600 border-blue-600 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              Unread only
+            </button>
+
+            {/* Dismissed toggle */}
+            <button
+              onClick={() => setShowDismissed(v => !v)}
+              aria-pressed={showDismissed}
+              className={[
+                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium border transition-colors focus:outline-none focus:ring-2 focus:ring-amber-300',
+                showDismissed
+                  ? 'bg-amber-500 border-amber-500 text-white'
+                  : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50',
+              ].join(' ')}
+            >
+              {showDismissed ? 'Showing dismissed' : 'Dismissed'}
+            </button>
+
+            {/* Clear all */}
+            {hasActiveFilters && (
+              <button
+                onClick={clearFilters}
+                className="px-2 text-sm text-gray-400 hover:text-gray-700 transition-colors focus:outline-none"
+              >
+                Clear all ✕
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* ── Error ──────────────────────────────────────────────────────── */}
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 font-medium">
+            {error}
+          </div>
+        )}
+
+        {/* ── Loading skeleton ────────────────────────────────────────────── */}
+        {loading && !error && (
+          <div className="rounded-2xl border border-gray-100 bg-white divide-y divide-gray-100 overflow-hidden">
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
+          </div>
+        )}
+
+        {/* ── Content ─────────────────────────────────────────────────────── */}
+        {!loading && !error && (
+          <>
+            {/* Critical alerts — pinned section */}
+            {criticalItems.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 px-1">
+                  <span className="relative flex h-2.5 w-2.5 flex-shrink-0">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-red-500" />
+                  </span>
+                  <h3 className="text-xs font-bold text-red-600 uppercase tracking-wider">
+                    Critical alerts ({criticalItems.length})
+                  </h3>
                 </div>
-
-                {/* Content */}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2 mb-1">
-                    {moduleBadge(evt?.module)}
-                    {severityBadge(evt?.severity)}
-                    {!notif.is_read && (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-bold bg-blue-600 text-white">
-                        NEW
-                      </span>
-                    )}
-                  </div>
-
-                  <p className={`text-sm font-semibold ${notif.is_read ? 'text-gray-500' : 'text-gray-900'}`}>
-                    {evt?.title ?? '(no title)'}
-                  </p>
-
-                  {evt?.event_type && (
-                    <p className="text-xs text-gray-400 mt-0.5">{eventTypeLabel(evt.event_type)}</p>
-                  )}
-
-                  {evt?.body && (
-                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">{evt.body}</p>
-                  )}
-
-                  <p className="text-xs text-gray-400 mt-1.5">
-                    {timeAgo(evt?.occurred_at ?? notif.created_at)}
-                  </p>
-                </div>
-
-                {/* Actions */}
-                <div className="flex-shrink-0 flex flex-col items-end gap-2">
-                  {evt?.deep_link && (
-                    <Link
-                      href={evt.deep_link}
-                      className="px-3 py-1.5 text-xs font-medium text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap"
-                    >
-                      Open →
-                    </Link>
-                  )}
-
-                  {!notif.is_read && (
-                    <button
-                      onClick={() => markRead(notif.id)}
-                      className="px-3 py-1.5 text-xs font-medium text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 transition-colors whitespace-nowrap"
-                    >
-                      Mark read
-                    </button>
-                  )}
-
-                  <button
-                    onClick={() => dismiss(notif.id)}
-                    className="px-3 py-1.5 text-xs font-medium text-red-400 border border-red-100 rounded-lg hover:bg-red-50 transition-colors whitespace-nowrap"
-                  >
-                    Dismiss
-                  </button>
+                <div className="rounded-2xl border border-red-200 bg-white divide-y divide-red-50 overflow-hidden shadow-sm">
+                  {criticalItems.map(notif => (
+                    <NotificationCard
+                      key={notif.id}
+                      notif={notif}
+                      onMarkRead={markRead}
+                      onDismiss={dismiss}
+                      onOpen={handleOpenNotif}
+                    />
+                  ))}
                 </div>
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
 
-      {/* Roadmap footer */}
-      <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500 space-y-1">
-        <p className="font-medium text-gray-600">Notification system roadmap</p>
-        <p>✅ <strong>Phase 1</strong> — Bell icon, sidebar badge, notifications page</p>
-        <p>✅ <strong>Phase 2</strong> — platform_events table, admin_notifications table, feedback fan-out, per-staff inbox, mark read/dismiss persisted to DB</p>
-        <p>⏳ <strong>Phase 3</strong> — CRM / invoice / sync / subscription events, staff assignment, escalation, email digests</p>
-        <p>⏳ <strong>Phase 4</strong> — Supabase Realtime push for critical alerts, mobile push (APNs/FCM), AI clustering</p>
+            {/* Normal inbox */}
+            {normalItems.length > 0 && (
+              <div className="space-y-2">
+                {criticalItems.length > 0 && (
+                  <h3 className="text-xs font-medium text-gray-400 uppercase tracking-wider px-1">Inbox</h3>
+                )}
+                <div className="rounded-2xl border border-gray-100 bg-white divide-y divide-gray-50 overflow-hidden">
+                  {normalItems.map(notif => (
+                    <NotificationCard
+                      key={notif.id}
+                      notif={notif}
+                      onMarkRead={markRead}
+                      onDismiss={dismiss}
+                      onOpen={handleOpenNotif}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Empty state */}
+            {visible.length === 0 && (
+              <EmptyState
+                filter={filter}
+                severityFilter={severityFilter}
+                unreadOnly={unreadOnly}
+                hasItems={items.length > 0}
+                onClear={clearFilters}
+              />
+            )}
+          </>
+        )}
+
+        {/* ── Roadmap footer ───────────────────────────────────────────────── */}
+        <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-3 text-xs text-gray-500 space-y-1">
+          <p className="font-semibold text-gray-600">Notification system roadmap</p>
+          <p>✅ <strong>Phase 1</strong> — Bell icon, sidebar badge, notifications page</p>
+          <p>✅ <strong>Phase 2</strong> — platform_events table, admin_notifications table, feedback fan-out, per-staff inbox, mark read/dismiss persisted to DB</p>
+          <p>✅ <strong>Phase 3</strong> — Bell badge capped at 9+, visibility-triggered refresh, per-action bell sync (custom event), severity/unread/dismissed filters</p>
+          <p>✅ <strong>Phase 4</strong> — Invoice created events, subscription payment_failed/cancelled events, cross-module audit</p>
+          <p>✅ <strong>Phase 4.5</strong> — Severity visual hierarchy, critical pinning, card redesign, detail drawer, toasts, URL filter state, search, shimmer loading, premium empty states</p>
+          <p>⏳ <strong>Phase 5</strong> — Supabase Realtime push, staff assignment, escalation, email digests, mobile push (APNs/FCM), AI clustering</p>
+        </div>
+
       </div>
-    </div>
+
+      {/* Detail drawer — rendered outside main content flow (fixed position) */}
+      <DetailDrawer
+        notif={selectedNotif}
+        onClose={() => setSelectedNotif(null)}
+        onMarkRead={markRead}
+        onDismiss={dismiss}
+      />
+
+      {/* Toast bar — fixed bottom-right */}
+      <ToastBar
+        toasts={toasts}
+        onDismiss={id => setToasts(prev => prev.filter(t => t.id !== id))}
+        onClickToast={handleToastClick}
+      />
+    </>
   );
 }
 

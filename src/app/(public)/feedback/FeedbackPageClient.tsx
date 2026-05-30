@@ -33,10 +33,10 @@ type Tab = 'help' | 'issue' | 'suggestion' | 'review';
 // ─── Shared styles ────────────────────────────────────────────────────────────
 
 const INPUT_CLASS =
-  'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent text-sm transition-colors';
+  'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white caret-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent text-sm transition-colors';
 
 const TEXTAREA_CLASS =
-  'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent resize-none text-sm transition-colors';
+  'w-full px-4 py-3 rounded-lg bg-white/[0.06] border border-white/[0.12] text-white caret-white placeholder:text-white/30 focus:outline-none focus:ring-2 focus:ring-[#cbb26b] focus:border-transparent resize-none text-sm transition-colors';
 
 const LABEL_CLASS = 'block text-sm font-medium text-white/70 mb-2';
 
@@ -90,7 +90,7 @@ function EmailField({
         placeholder="you@example.com"
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className={INPUT_CLASS}
+        className={`${INPUT_CLASS} fb-autofill-dark`}
       />
       <p className="text-xs text-white/30 mt-1.5">
         For urgent account or billing issues, include your email so we can reply.

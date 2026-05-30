@@ -116,6 +116,25 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
     return emojis[type as keyof typeof emojis] || '❓';
   };
 
+  // Light-surface form fields: must declare text colour explicitly.
+  // Global body sets color: rgba(255,255,255,0.92) and Tailwind Preflight sets
+  // color:inherit on form elements — omitting text-gray-900 makes text invisible.
+  const ADM_TEXTAREA =
+    'w-full px-4 py-2 bg-white text-gray-900 caret-gray-900 border border-gray-300 rounded-lg ' +
+    'placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none';
+  const ADM_INPUT =
+    'w-full px-4 py-2 bg-white text-gray-900 caret-gray-900 border border-gray-300 rounded-lg ' +
+    'placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent';
+  const ADM_INPUT_SM =
+    'w-full px-3 py-2 bg-white text-gray-900 caret-gray-900 border border-gray-300 rounded-lg ' +
+    'placeholder:text-slate-500 focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+  const ADM_SELECT =
+    'w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg ' +
+    'focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4';
+  const ADM_SELECT_SM =
+    'w-full px-3 py-2 bg-white text-gray-900 border border-gray-300 rounded-lg ' +
+    'focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm';
+
   return (
     <div className="min-h-screen bg-gray-50 py-12">
       <div className="max-w-4xl mx-auto px-4">
@@ -249,7 +268,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                   onChange={(e) => setInternalNotes(e.target.value)}
                   placeholder="Add internal notes for your team..."
                   rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className={ADM_TEXTAREA}
                 />
               </div>
 
@@ -261,7 +280,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                   onChange={(e) => setAdminReply(e.target.value)}
                   placeholder="Reply to the user (sets replied_at timestamp)..."
                   rows={4}
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+                  className={ADM_TEXTAREA}
                 />
                 {feedback.replied_at && (
                   <p className="text-xs text-gray-500 mt-1">Last replied: {new Date(feedback.replied_at).toLocaleString()}</p>
@@ -276,7 +295,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                   value={triageTags}
                   onChange={(e) => setTriageTags(e.target.value)}
                   placeholder="Comma-separated tags, e.g. billing, urgent, ios"
-                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  className={ADM_INPUT}
                 />
                 <p className="text-xs text-gray-400 mt-1">Separate tags with commas.</p>
               </div>
@@ -291,7 +310,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as FeedbackStatus)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
+                className={ADM_SELECT}
               >
                 <option value="new">🔵 New</option>
                 <option value="investigating">🔍 Investigating</option>
@@ -331,7 +350,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                 <select
                   value={severity}
                   onChange={(e) => setSeverity(e.target.value as FeedbackSeverity)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className={ADM_SELECT_SM}
                 >
                   <option value="low">⚪ Low</option>
                   <option value="medium">🔵 Medium</option>
@@ -345,7 +364,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                 <select
                   value={reproducibility}
                   onChange={(e) => setReproducibility(e.target.value as FeedbackReproducibility | '')}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className={ADM_SELECT_SM}
                 >
                   <option value="">Not set</option>
                   <option value="always">Always</option>
@@ -362,7 +381,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                   value={fixedInVersion}
                   onChange={(e) => setFixedInVersion(e.target.value)}
                   placeholder="e.g. 2.2.0"
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  className={ADM_INPUT_SM}
                 />
               </div>
 
@@ -373,7 +392,7 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                   value={duplicateOfId}
                   onChange={(e) => setDuplicateOfId(e.target.value)}
                   placeholder="FB-..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm font-mono"
+                  className={`${ADM_INPUT_SM} font-mono`}
                 />
               </div>
             </div>

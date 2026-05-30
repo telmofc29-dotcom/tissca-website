@@ -42,6 +42,10 @@ export interface CreatePlatformEventInput {
 // Staff roles that receive new-feedback notifications
 const FEEDBACK_NOTIFICATION_ROLES = ['superadmin', 'admin'] as const;
 
+// Phase 4 role sets
+const INVOICE_NOTIFICATION_ROLES       = ['superadmin', 'admin', 'accountant'] as const;
+const SUBSCRIPTION_NOTIFICATION_ROLES  = ['superadmin', 'admin'] as const;
+
 // ─── createPlatformEvent ─────────────────────────────────────────────────────
 
 /**
@@ -92,7 +96,12 @@ export async function createPlatformEvent(
       return null;
     }
 
-    return (data as { id: string }).id ?? null;
+    const eventId = (data as { id: string }).id ?? null;
+    console.log(
+      `[admin-notifications] createPlatformEvent: created event_id=${eventId}`,
+      `module=${input.module} severity=${input.severity}`,
+    );
+    return eventId;
   } catch (err) {
     console.error('[admin-notifications] createPlatformEvent threw:', err);
     return null;
@@ -128,8 +137,10 @@ export async function fanOutAdminNotifications(
     }
 
     if (!staffList || staffList.length === 0) {
-      console.log(
-        '[admin-notifications] fanOutAdminNotifications: no active staff for roles:',
+      console.warn(
+        '[admin-notifications] fanOutAdminNotifications: no active staff found for roles:',
+        targetRoles,
+        '— check tissca_staff table has rows with is_active=true and role IN',
         targetRoles,
       );
       return;
@@ -140,6 +151,11 @@ export async function fanOutAdminNotifications(
       staff_user_id: s.user_id,
     }));
 
+    console.log(
+      `[admin-notifications] fanOutAdminNotifications: fanning out to ${rows.length} staff`,
+      `event_id=${eventId}`,
+    );
+
     const { error: insertError } = await supabase
       .from('admin_notifications')
       .insert(rows);
@@ -149,6 +165,11 @@ export async function fanOutAdminNotifications(
         '[admin-notifications] fanOutAdminNotifications: insert failed:',
         insertError.message,
         { event_id: eventId, staff_count: rows.length },
+      );
+    } else {
+      console.log(
+        `[admin-notifications] fanOutAdminNotifications: inserted ${rows.length} admin_notifications rows`,
+        `event_id=${eventId}`,
       );
     }
   } catch (err) {
@@ -182,6 +203,10 @@ export async function createFeedbackNotification(
   feedback: FeedbackSubmission,
 ): Promise<void> {
   try {
+    console.log(
+      `[admin-notifications] createFeedbackNotification: start`,
+      `feedback_id=${feedback.id} type=${feedback.type}`,
+    );
     const severity = feedbackToSeverity(feedback);
 
     const eventId = await createPlatformEvent({
@@ -211,7 +236,12 @@ export async function createFeedbackNotification(
     });
 
     if (!eventId) {
-      // Duplicate idempotency_key or insert error — skip fan-out safely
+      // Duplicate idempotency_key (retry) or insert error — both are logged inside createPlatformEvent.
+      console.warn(
+        '[admin-notifications] createFeedbackNotification: no eventId returned,',
+        'skipping fan-out (may be a duplicate or DB error)',
+        `feedback_id=${feedback.id}`,
+      );
       return;
     }
 
@@ -219,5 +249,133 @@ export async function createFeedbackNotification(
   } catch (err) {
     // Non-fatal: feedback submission must still succeed even if notification creation fails
     console.warn('[admin-notifications] createFeedbackNotification failed (non-fatal):', err);
+  }
+}
+
+// ─── createInvoiceCreatedNotification ─────────────────────────────────────────
+
+/**
+ * Phase 4: Emit a platform_events row + admin_notifications fan-out when a new invoice is created.
+ * Called from POST /api/invoices and POST /api/quotes/:id/create-invoice after successful DB insert.
+ * Entirely non-fatal: logs failures but never throws.
+ * Uses idempotency_key `invoice.created.{invoiceId}` to prevent double-creation on retry.
+ */
+export async function createInvoiceCreatedNotification(params: {
+  invoiceId:     string;
+  invoiceNumber: string;
+  businessId:    string | null;
+  userId:        string | null;
+  total:         number;
+  currency:      string;
+}): Promise<void> {
+  try {
+    const eventId = await createPlatformEvent({
+      module:          'invoices',
+      event_type:      'invoice.created',
+      severity:        'low',
+      source:          'user_action',
+      workspace_id:    params.businessId,
+      user_id:         params.userId,
+      title:           `New invoice created: ${params.invoiceNumber}`,
+      body:            `Invoice ${params.invoiceNumber} totalling ${params.currency} ${params.total.toFixed(2)} has been created`,
+      metadata: {
+        invoice_id:     params.invoiceId,
+        invoice_number: params.invoiceNumber,
+        total:          params.total,
+        currency:       params.currency,
+      },
+      entity_type:     'invoice',
+      entity_id:       params.invoiceId,
+      deep_link:       '/admin/notifications',
+      idempotency_key: `invoice.created.${params.invoiceId}`,
+    });
+
+    if (!eventId) return;
+    await fanOutAdminNotifications(eventId, INVOICE_NOTIFICATION_ROLES);
+  } catch (err) {
+    console.warn('[admin-notifications] createInvoiceCreatedNotification failed (non-fatal):', err);
+  }
+}
+
+// ─── createSubscriptionPaymentFailedNotification ──────────────────────────────
+
+/**
+ * Phase 4: Emit a platform_events row + fan-out when a Stripe subscription payment fails.
+ * Called from handleInvoicePaymentFailed in the Stripe webhook after financial_events write.
+ * Non-fatal. idempotency_key uses stripeEventId (globally unique per Stripe delivery).
+ */
+export async function createSubscriptionPaymentFailedNotification(params: {
+  stripeInvoiceId: string;
+  stripeEventId:   string;
+  workspaceId:     string | null;
+  userId:          string | null;
+  amountDue:       number;  // in smallest currency unit (pence/cents)
+  currency:        string;
+}): Promise<void> {
+  try {
+    const amountFormatted = (params.amountDue / 100).toFixed(2);
+    const eventId = await createPlatformEvent({
+      module:          'subscription',
+      event_type:      'subscription.payment_failed',
+      severity:        'critical',
+      source:          'webhook',
+      workspace_id:    params.workspaceId,
+      user_id:         params.userId,
+      title:           'Subscription payment failed',
+      body:            `Payment of ${params.currency.toUpperCase()} ${amountFormatted} failed for Stripe invoice ${params.stripeInvoiceId}`,
+      metadata: {
+        stripe_invoice_id: params.stripeInvoiceId,
+        amount_due:        params.amountDue,
+        currency:          params.currency,
+      },
+      entity_type:     'stripe_invoice',
+      entity_id:       params.stripeInvoiceId,
+      deep_link:       '/admin/notifications',
+      idempotency_key: `subscription.payment_failed.${params.stripeEventId}`,
+    });
+
+    if (!eventId) return;
+    await fanOutAdminNotifications(eventId, SUBSCRIPTION_NOTIFICATION_ROLES);
+  } catch (err) {
+    console.warn('[admin-notifications] createSubscriptionPaymentFailedNotification failed (non-fatal):', err);
+  }
+}
+
+// ─── createSubscriptionCancelledNotification ──────────────────────────────────
+
+/**
+ * Phase 4: Emit a platform_events row + fan-out when a Stripe subscription is deleted/cancelled.
+ * Called from handleSubscriptionDeleted in the Stripe webhook after workspace billing sync.
+ * Non-fatal. idempotency_key uses stripeEventId.
+ */
+export async function createSubscriptionCancelledNotification(params: {
+  stripeSubscriptionId: string;
+  stripeEventId:        string;
+  workspaceId:          string | null;
+  userId:               string | null;
+}): Promise<void> {
+  try {
+    const eventId = await createPlatformEvent({
+      module:          'subscription',
+      event_type:      'subscription.cancelled',
+      severity:        'high',
+      source:          'webhook',
+      workspace_id:    params.workspaceId,
+      user_id:         params.userId,
+      title:           'Subscription cancelled',
+      body:            `Stripe subscription ${params.stripeSubscriptionId} has been cancelled`,
+      metadata: {
+        stripe_subscription_id: params.stripeSubscriptionId,
+      },
+      entity_type:     'stripe_subscription',
+      entity_id:       params.stripeSubscriptionId,
+      deep_link:       '/admin/notifications',
+      idempotency_key: `subscription.cancelled.${params.stripeEventId}`,
+    });
+
+    if (!eventId) return;
+    await fanOutAdminNotifications(eventId, SUBSCRIPTION_NOTIFICATION_ROLES);
+  } catch (err) {
+    console.warn('[admin-notifications] createSubscriptionCancelledNotification failed (non-fatal):', err);
   }
 }

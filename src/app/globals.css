@@ -243,3 +243,36 @@ h4 {
     display: none;
   }
 }
+
+/* ============================================================
+   Feedback Form — Autofill Safety Overrides
+   ─────────────────────────────────────────────────────────────
+   Chrome/Safari autofill replaces the input background with a
+   browser-controlled colour (typically blue/yellow) which
+   destroys both dark and light form surfaces.
+
+   These utility classes force the correct background + text
+   colour when autofill triggers. Add the class directly to the
+   <input> element alongside the normal Tailwind classes.
+
+   Light surface (white bg, dark text) → fb-autofill-light
+   Dark  surface (dark  bg, white text) → fb-autofill-dark
+   ============================================================ */
+
+/* Light surface autofill — white background, slate-900 text */
+.fb-autofill-light:-webkit-autofill,
+.fb-autofill-light:-webkit-autofill:hover,
+.fb-autofill-light:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #ffffff inset !important;
+  -webkit-text-fill-color: #111827 !important;
+  caret-color: #111827 !important;
+}
+
+/* Dark surface autofill — #0d1520 background, near-white text */
+.fb-autofill-dark:-webkit-autofill,
+.fb-autofill-dark:-webkit-autofill:hover,
+.fb-autofill-dark:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px #0d1520 inset !important;
+  -webkit-text-fill-color: rgba(255, 255, 255, 0.92) !important;
+  caret-color: white !important;
+}

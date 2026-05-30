@@ -242,13 +242,17 @@ export async function POST(request: NextRequest) {
 
     // Persist to DB (falls back to in-memory)
     await persistFeedback(submission);
+    console.log(`[POST /api/feedback] Feedback persisted: id=${submission.id} type=${submission.type}`);
 
     // Phase 2: emit platform_event + fan-out admin_notifications.
-    // Non-fatal — runs in the background after response is ready.
-    // Failure here must never surface to the submitter.
-    createFeedbackNotification(submission).catch((err) => {
+    // IMPORTANT: must be AWAITED (not fire-and-forget) so the serverless function
+    // stays alive to complete the Supabase writes before Vercel freezes the context.
+    // The try/catch ensures feedback still returns success if notification fails.
+    try {
+      await createFeedbackNotification(submission);
+    } catch (err) {
       console.warn('[POST /api/feedback] Notification emission failed (non-fatal):', err);
-    });
+    }
 
     return NextResponse.json({
       success: true,
