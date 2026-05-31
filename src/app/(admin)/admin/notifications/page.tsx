@@ -43,9 +43,13 @@ interface AdminNotification {
   read_at: string | null;
   dismissed_at: string | null;
   assigned_to: string | null;
+  assigned_to_name: string | null;  // Phase 5A — resolved from user_profiles by API
+  assigned_at: string | null;       // Phase 5A
+  claimed_at: string | null;        // Phase 5A
   handled_by: string | null;
   handled_at: string | null;
   escalated: boolean;
+  workflow_status: string;           // Phase 5A — operational state machine
   created_at: string;
   platform_events: PlatformEvent | null;
 }
@@ -153,6 +157,67 @@ function getSeverityConfig(severity?: string): SeverityConfig {
   return SEVERITY_MAP[severity ?? ''] ?? SEVERITY_MAP.info;
 }
 
+// ─── Workflow status configuration ─────────────────────────────────────────────────────
+
+interface StatusConfig {
+  label: string;
+  badgeBg: string;
+  badgeText: string;
+}
+
+const WORKFLOW_STATUS_CONFIG: Record<string, StatusConfig> = {
+  NEW:                { label: 'New',              badgeBg: 'bg-gray-100',    badgeText: 'text-gray-500'   },
+  INVESTIGATING:      { label: 'Investigating',    badgeBg: 'bg-blue-100',    badgeText: 'text-blue-700'   },
+  WAITING_USER:       { label: 'Waiting: User',    badgeBg: 'bg-amber-100',   badgeText: 'text-amber-700'  },
+  WAITING_ENGINEER:   { label: 'Waiting: Eng',     badgeBg: 'bg-orange-100',  badgeText: 'text-orange-700' },
+  WAITING_ACCOUNTANT: { label: 'Waiting: Acct',    badgeBg: 'bg-yellow-100',  badgeText: 'text-yellow-800' },
+  ESCALATED:          { label: 'Escalated',        badgeBg: 'bg-rose-100',    badgeText: 'text-rose-700'   },
+  RESOLVED:           { label: 'Resolved',         badgeBg: 'bg-green-100',   badgeText: 'text-green-700'  },
+  DISMISSED:          { label: 'Dismissed',        badgeBg: 'bg-gray-100',    badgeText: 'text-gray-400'   },
+  REOPENED:           { label: 'Reopened',         badgeBg: 'bg-purple-100',  badgeText: 'text-purple-700' },
+};
+
+function getWorkflowStatusConfig(status?: string): StatusConfig {
+  return WORKFLOW_STATUS_CONFIG[status ?? ''] ?? WORKFLOW_STATUS_CONFIG.NEW;
+}
+
+// ─── Activity timeline types + icons ─────────────────────────────────────────────
+
+interface ActivityRow {
+  id: string;
+  action: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  from_status: string | null;
+  to_status: string | null;
+  reason: string | null;
+  occurred_at: string;
+}
+
+const ACTIVITY_ICONS: Record<string, string> = {
+  CREATED:        '🔔',
+  VIEWED:         '👁',
+  CLAIMED:        '✋',
+  ASSIGNED:       '➡️',
+  REASSIGNED:     '↩',
+  STATUS_CHANGED: '🔄',
+  ESCALATED:      '⬆',
+  NOTE_ADDED:     '📝',
+  RESOLVED:       '✅',
+  DISMISSED:      '🚫',
+  REOPENED:       '🔁',
+  READ:           '✓',
+  READ_ALL:       '✓✓',
+};
+
+function formatActivityLabel(row: ActivityRow): string {
+  const base = row.action.replace(/_/g, ' ').toLowerCase();
+  if (row.from_status && row.to_status && row.action === 'STATUS_CHANGED') {
+    return `${base}: ${row.from_status} → ${row.to_status}`;
+  }
+  return base;
+}
+
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
 function timeAgo(iso: string): string {
@@ -219,14 +284,20 @@ interface CardProps {
   onMarkRead: (id: string) => void;
   onDismiss:  (id: string) => void;
   onOpen:     (notif: AdminNotification) => void;
+  onClaim:    (id: string) => void;          // Phase 5A
+  currentUserId: string | null;             // Phase 5A
 }
 
-function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
+function NotificationCard({ notif, onMarkRead, onDismiss, onOpen, onClaim, currentUserId }: CardProps) {
   const evt     = notif.platform_events;
   const sev     = getSeverityConfig(evt?.severity);
   const mod     = getModuleConfig(evt?.module);
   const icon    = getEventIcon(evt?.event_type, evt?.module);
   const isUnread = !notif.is_read;
+  const wfStatus = notif.workflow_status ?? 'NEW';
+  const wfCfg    = getWorkflowStatusConfig(wfStatus);
+  const isAssignedToMe = !!currentUserId && notif.assigned_to === currentUserId;
+  const isClaimedByOther = !!notif.assigned_to && notif.assigned_to !== currentUserId;
 
   return (
     <div
@@ -267,6 +338,12 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
           {evt?.severity && evt.severity !== 'info' && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
               {sev.label}
+            </span>
+          )}
+          {/* Phase 5A: Workflow status badge (only shown when not default NEW) */}
+          {wfStatus !== 'NEW' && (
+            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${wfCfg.badgeBg} ${wfCfg.badgeText}`}>
+              {wfCfg.label}
             </span>
           )}
           {isUnread && (
@@ -310,6 +387,15 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
               ws:{evt.workspace_id.slice(0, 8)}…
             </span>
           )}
+          {/* Phase 5A: Ownership indicator */}
+          {isClaimedByOther && (
+            <span className="text-[11px] text-blue-500 font-medium truncate max-w-[160px]">
+              🔒 {notif.assigned_to_name ?? 'Staff member'}
+            </span>
+          )}
+          {isAssignedToMe && wfStatus === 'INVESTIGATING' && (
+            <span className="text-[11px] text-green-600 font-medium">✋ Assigned to you</span>
+          )}
         </div>
       </div>
 
@@ -326,6 +412,16 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
             Open →
           </Link>
         )}
+        {/* Phase 5A: Claim button — only shown when unclaimed */}
+        {!notif.assigned_to && (
+          <button
+            onClick={() => onClaim(notif.id)}
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-indigo-600 border border-indigo-200 rounded-lg hover:bg-indigo-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-indigo-300"
+            aria-label="Claim this notification"
+          >
+            ✋ Claim
+          </button>
+        )}
         {isUnread && (
           <button
             onClick={() => onMarkRead(notif.id)}
@@ -335,13 +431,16 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
             ✓ Read
           </button>
         )}
-        <button
-          onClick={() => onDismiss(notif.id)}
-          className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-rose-400 border border-rose-100 rounded-lg hover:bg-rose-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-rose-200"
-          aria-label="Dismiss notification"
-        >
-          Dismiss
-        </button>
+        {/* Dismiss and non-action buttons disabled when claimed by another staff member */}
+        {!isClaimedByOther && (
+          <button
+            onClick={() => onDismiss(notif.id)}
+            className="inline-flex items-center px-3 py-1.5 text-xs font-medium text-rose-400 border border-rose-100 rounded-lg hover:bg-rose-50 transition-colors whitespace-nowrap focus:outline-none focus:ring-2 focus:ring-rose-200"
+            aria-label="Dismiss notification"
+          >
+            Dismiss
+          </button>
+        )}
       </div>
     </div>
   );
@@ -350,16 +449,45 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen }: CardProps) {
 // ─── Detail Drawer ────────────────────────────────────────────────────────────
 
 interface DrawerProps {
-  notif:       AdminNotification | null;
-  onClose:     () => void;
-  onMarkRead:  (id: string) => void;
-  onDismiss:   (id: string) => void;
+  notif:         AdminNotification | null;
+  onClose:       () => void;
+  onMarkRead:    (id: string) => void;
+  onDismiss:     (id: string) => void;
+  onResolve:     (id: string) => void;    // Phase 5A
+  currentUserId: string | null;           // Phase 5A
+  getToken:      () => Promise<string | null>; // Phase 5A — for activity fetch
 }
 
-function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
+function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, currentUserId, getToken }: DrawerProps) {
   const [jsonExpanded, setJsonExpanded] = useState(false);
+  const [activity, setActivity]         = useState<ActivityRow[]>([]);
+  const [activityLoading, setActivityLoading] = useState(false);
 
-  useEffect(() => { setJsonExpanded(false); }, [notif?.id]);
+  useEffect(() => { setJsonExpanded(false); setActivity([]); }, [notif?.id]);
+
+  // Phase 5A: Fetch activity timeline whenever drawer opens with a new notification
+  useEffect(() => {
+    if (!notif) return;
+    let cancelled = false;
+    setActivityLoading(true);
+    (async () => {
+      try {
+        const token = await getToken();
+        if (!token || cancelled) return;
+        const res = await fetch(`/api/admin/notifications/${notif.id}/activity`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!res.ok || cancelled) return;
+        const json = await res.json() as { activity?: ActivityRow[] };
+        if (!cancelled) setActivity(json.activity ?? []);
+      } catch {
+        // Non-fatal — activity section simply stays empty
+      } finally {
+        if (!cancelled) setActivityLoading(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [notif?.id, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (!notif) return;
@@ -375,6 +503,9 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
   const mod             = getModuleConfig(evt?.module);
   const icon            = getEventIcon(evt?.event_type, evt?.module);
   const metadataEntries = evt?.metadata ? Object.entries(evt.metadata) : [];
+  const wfStatus        = notif.workflow_status ?? 'NEW';
+  const wfCfg           = getWorkflowStatusConfig(wfStatus);
+  const isAssignedToMe  = !!currentUserId && notif.assigned_to === currentUserId;
 
   const metaFields: Array<{ label: string; value: string | null | undefined; mono?: boolean; truncate?: boolean }> = [
     { label: 'Occurred',    value: evt?.occurred_at ? new Date(evt.occurred_at).toLocaleString('en-GB') : null },
@@ -386,6 +517,8 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
     { label: 'Entity type', value: evt?.entity_type },
     { label: 'Entity ID',   value: evt?.entity_id,     mono: true, truncate: true },
     { label: 'Status',      value: notif.is_read ? 'Read' : 'Unread' },
+    { label: 'Workflow',    value: wfCfg.label },
+    { label: 'Owner',       value: notif.assigned_to_name ?? (notif.assigned_to ? 'Staff member' : null) },
   ];
 
   return (
@@ -416,6 +549,12 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
                 {evt?.severity && evt.severity !== 'info' && (
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
                     {sev.label}
+                  </span>
+                )}
+                {/* Phase 5A: Workflow status in drawer header */}
+                {wfStatus !== 'NEW' && (
+                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${wfCfg.badgeBg} ${wfCfg.badgeText}`}>
+                    {wfCfg.label}
                   </span>
                 )}
               </div>
@@ -512,10 +651,62 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss }: DrawerProps) {
               </Link>
             </div>
           )}
+
+          {/* Phase 5A: Activity timeline */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Activity</p>
+            {activityLoading && (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="flex items-center gap-3 animate-pulse">
+                    <div className="h-5 w-5 rounded-full bg-gray-100 flex-shrink-0" />
+                    <div className="flex-1 h-3 rounded bg-gray-100" />
+                    <div className="h-3 w-12 rounded bg-gray-100 flex-shrink-0" />
+                  </div>
+                ))}
+              </div>
+            )}
+            {!activityLoading && activity.length === 0 && (
+              <p className="text-xs text-gray-400">No activity recorded yet.</p>
+            )}
+            {!activityLoading && activity.length > 0 && (
+              <div className="space-y-2.5">
+                {activity.map(row => (
+                  <div key={row.id} className="flex items-start gap-2.5">
+                    <span className="text-base flex-shrink-0 leading-none mt-0.5" aria-hidden="true">
+                      {ACTIVITY_ICONS[row.action] ?? '•'}
+                    </span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-gray-700 leading-snug">
+                        <span className="font-medium">{row.actor_name ?? 'System'}</span>
+                        {' · '}
+                        {formatActivityLabel(row)}
+                      </p>
+                      {row.reason && (
+                        <p className="text-[11px] text-gray-400 mt-0.5 truncate">{row.reason}</p>
+                      )}
+                    </div>
+                    <span className="text-[11px] text-gray-400 flex-shrink-0 whitespace-nowrap">
+                      {timeAgo(row.occurred_at)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
         {/* Footer actions */}
         <div className="flex-shrink-0 flex items-center gap-3 px-6 py-4 border-t border-gray-100 bg-gray-50/60">
+          {/* Phase 5A: Resolve button — only for assigned staff member */}
+          {isAssignedToMe && wfStatus !== 'RESOLVED' && wfStatus !== 'DISMISSED' && (
+            <button
+              onClick={() => { onResolve(notif.id); onClose(); }}
+              className="flex-1 px-4 py-2 text-sm font-medium text-green-700 border border-green-200 rounded-xl hover:bg-green-50 transition-colors focus:outline-none focus:ring-2 focus:ring-green-300"
+            >
+              ✅ Resolve
+            </button>
+          )}
           {!notif.is_read && (
             <button
               onClick={() => { onMarkRead(notif.id); onClose(); }}
@@ -652,6 +843,7 @@ export default function AdminNotificationsPage() {
   const [toasts, setToasts]           = useState<ToastItem[]>([]);
   const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [refreshing, setRefreshing]   = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // Phase 5A
 
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevIdsRef   = useRef<Set<string> | null>(null);
@@ -690,6 +882,16 @@ export default function AdminNotificationsPage() {
     if (!supabase) return null;
     const { data: { session } } = await supabase.auth.getSession();
     return session?.access_token ?? null;
+  }, []);
+
+  // Phase 5A: Populate currentUserId from session on mount
+  useEffect(() => {
+    (async () => {
+      const supabase = getSupabaseClient();
+      if (!supabase) return;
+      const { data: { session } } = await supabase.auth.getSession();
+      setCurrentUserId(session?.user?.id ?? null);
+    })();
   }, []);
 
   // ── Data loading ──────────────────────────────────────────────────────────
@@ -825,6 +1027,54 @@ export default function AdminNotificationsPage() {
       load();
     }
   }, [getToken, load, items]);
+
+  // Phase 5A: Claim — atomic ownership, optimistic update
+  const claim = useCallback(async (notifId: string) => {
+    setItems(prev => prev.map(n =>
+      n.id === notifId
+        ? { ...n, assigned_to: currentUserId, workflow_status: 'INVESTIGATING' }
+        : n,
+    ));
+
+    const token = await getToken();
+    if (!token) return;
+
+    const res = await fetch(`/api/admin/notifications/${notifId}/claim`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!res.ok) {
+      if (res.status === 409) {
+        setError('This notification was already claimed by another staff member.');
+        setTimeout(() => setError(''), 4000);
+      }
+      load(); // Reload to get fresh state
+    }
+  }, [getToken, load, currentUserId]);
+
+  // Phase 5A: Resolve — marks as operationally resolved
+  const resolve = useCallback(async (notifId: string) => {
+    setItems(prev => prev.map(n =>
+      n.id === notifId
+        ? { ...n, workflow_status: 'RESOLVED', handled_by: currentUserId, handled_at: new Date().toISOString() }
+        : n,
+    ));
+
+    const token = await getToken();
+    if (!token) return;
+
+    const res = await fetch(`/api/admin/notifications/${notifId}/resolve`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (res.ok) {
+      window.dispatchEvent(new CustomEvent('admin-notif-count-changed'));
+    } else {
+      load();
+    }
+  }, [getToken, load, currentUserId]);
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
@@ -1074,6 +1324,8 @@ export default function AdminNotificationsPage() {
                       onMarkRead={markRead}
                       onDismiss={dismiss}
                       onOpen={handleOpenNotif}
+                      onClaim={claim}
+                      currentUserId={currentUserId}
                     />
                   ))}
                 </div>
@@ -1094,6 +1346,8 @@ export default function AdminNotificationsPage() {
                       onMarkRead={markRead}
                       onDismiss={dismiss}
                       onOpen={handleOpenNotif}
+                      onClaim={claim}
+                      currentUserId={currentUserId}
                     />
                   ))}
                 </div>
@@ -1121,7 +1375,11 @@ export default function AdminNotificationsPage() {
           <p>✅ <strong>Phase 3</strong> — Bell badge capped at 9+, visibility-triggered refresh, per-action bell sync (custom event), severity/unread/dismissed filters</p>
           <p>✅ <strong>Phase 4</strong> — Invoice created events, subscription payment_failed/cancelled events, cross-module audit</p>
           <p>✅ <strong>Phase 4.5</strong> — Severity visual hierarchy, critical pinning, card redesign, detail drawer, toasts, URL filter state, search, shimmer loading, premium empty states</p>
-          <p>⏳ <strong>Phase 5</strong> — Supabase Realtime push, staff assignment, escalation, email digests, mobile push (APNs/FCM), AI clustering</p>
+          <p>✅ <strong>Phase 5A</strong> — Workflow state machine (9 states), atomic claim/ownership, audit trail (notification_activity), status badges, activity timeline in drawer, resolve workflow</p>
+          <p>⏳ <strong>Phase 5B</strong> — Private staff notes, full activity timeline tabs</p>
+          <p>⏳ <strong>Phase 5C</strong> — Escalation flow, superadmin reassign</p>
+          <p>⏳ <strong>Phase 5D</strong> — My Workbench page</p>
+          <p>⏳ <strong>Phase 6+</strong> — Email digests, Supabase Realtime push, mobile push (APNs/FCM), auto-escalation cron, AI clustering</p>
         </div>
 
       </div>
@@ -1132,6 +1390,9 @@ export default function AdminNotificationsPage() {
         onClose={() => setSelectedNotif(null)}
         onMarkRead={markRead}
         onDismiss={dismiss}
+        onResolve={resolve}
+        currentUserId={currentUserId}
+        getToken={getToken}
       />
 
       {/* Toast bar — fixed bottom-right */}

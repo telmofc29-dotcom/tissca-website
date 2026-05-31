@@ -35,6 +35,7 @@ export async function GET(req: NextRequest) {
   const limit = Math.min(Math.max(1, isNaN(rawLimit) ? 50 : rawLimit), 100);
 
   // Join admin_notifications with platform_events via FK (event_id → platform_events.id)
+  // Phase 5A additions: workflow_status, assigned_at, claimed_at returned alongside existing columns
   let query = supabase
     .from('admin_notifications')
     .select(`
@@ -44,9 +45,12 @@ export async function GET(req: NextRequest) {
       read_at,
       dismissed_at,
       assigned_to,
+      assigned_at,
+      claimed_at,
       handled_by,
       handled_at,
       escalated,
+      workflow_status,
       created_at,
       platform_events (
         id,
@@ -79,7 +83,10 @@ export async function GET(req: NextRequest) {
 
   // Apply module/severity filters in JS after join (PostgREST nested filter syntax is verbose;
   // these are low-cardinality filters on already-paginated data)
-  type NotifRow = { platform_events?: { module?: string; severity?: string } | null };
+  type NotifRow = {
+    assigned_to?: string | null;
+    platform_events?: { module?: string; severity?: string } | null;
+  };
   let notifications: NotifRow[] = (data ?? []) as NotifRow[];
 
   if (moduleFilter) {
@@ -93,5 +100,27 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  return NextResponse.json({ notifications });
+  // Phase 5A: Batch-resolve assigned_to display names from user_profiles
+  const assignedToIds = [
+    ...new Set(notifications.map(n => n.assigned_to).filter(Boolean)),
+  ] as string[];
+
+  const nameMap: Record<string, string> = {};
+  if (assignedToIds.length > 0) {
+    const { data: profiles } = await supabase
+      .from('user_profiles')
+      .select('id, full_name')
+      .in('id', assignedToIds);
+    (profiles ?? []).forEach((p: { id?: string; full_name?: string | null }) => {
+      if (p.id && p.full_name) nameMap[p.id] = p.full_name;
+    });
+  }
+
+  // Attach assigned_to_name to each row
+  const enriched = notifications.map(n => ({
+    ...n,
+    assigned_to_name: n.assigned_to ? (nameMap[n.assigned_to] ?? null) : null,
+  }));
+
+  return NextResponse.json({ notifications: enriched });
 }

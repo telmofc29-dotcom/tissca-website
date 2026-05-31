@@ -50,5 +50,17 @@ export async function PATCH(
     return NextResponse.json({ error: 'Not found' }, { status: 404 });
   }
 
+  // Append activity row (non-fatal — never blocks the mark-read response)
+  try {
+    await supabase.from('notification_activity').insert({
+      notification_id: notificationId,
+      actor_id:        userId,
+      action:          'READ',
+      metadata:        {},
+    });
+  } catch (actErr) {
+    console.warn('[PATCH /read] Activity log failed (non-fatal):', actErr);
+  }
+
   return NextResponse.json({ ok: true });
 }
