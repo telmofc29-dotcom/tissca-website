@@ -62,7 +62,7 @@ export async function GET(
   // Fetch activity rows for this notification
   const { data: rows, error: activityError } = await supabase
     .from('notification_activity')
-    .select('id, action, actor_id, from_status, to_status, reason, occurred_at')
+    .select('id, action, actor_id, from_status, to_status, reason, metadata, occurred_at')
     .eq('notification_id', notificationId)
     .order('occurred_at', { ascending: false })
     .limit(50);
@@ -96,6 +96,7 @@ export async function GET(
     from_status: r.from_status,
     to_status:   r.to_status,
     reason:      r.reason,
+    metadata:    r.metadata ?? null,
     occurred_at: r.occurred_at,
   }));
 

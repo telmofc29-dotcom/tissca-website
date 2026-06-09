@@ -191,6 +191,7 @@ interface ActivityRow {
   from_status: string | null;
   to_status: string | null;
   reason: string | null;
+  metadata: Record<string, unknown> | null;
   occurred_at: string;
 }
 
@@ -211,12 +212,45 @@ const ACTIVITY_ICONS: Record<string, string> = {
 };
 
 function formatActivityLabel(row: ActivityRow): string {
+  // Phase 5B: NOTE_ADDED shows a friendly label + note type (never the note body)
+  if (row.action === 'NOTE_ADDED') {
+    const rawType = typeof row.metadata?.note_type === 'string' ? row.metadata.note_type : null;
+    const typeLabel = rawType ? rawType.replace(/_/g, ' ') : null;
+    return typeLabel ? `Private note added (${typeLabel})` : 'Private note added';
+  }
   const base = row.action.replace(/_/g, ' ').toLowerCase();
   if (row.from_status && row.to_status && row.action === 'STATUS_CHANGED') {
     return `${base}: ${row.from_status} → ${row.to_status}`;
   }
   return base;
 }
+
+// ─── Private notes types + config (Phase 5B) ──────────────────────────────────
+
+interface NoteRow {
+  id: string;
+  note: string;
+  note_type: string;
+  staff_user_id: string | null;
+  author_name: string | null;
+  created_at: string;
+  updated_at: string | null;
+}
+
+const NOTE_TYPE_OPTIONS: Array<{ value: string; label: string }> = [
+  { value: 'internal',          label: 'Internal' },
+  { value: 'resolution',        label: 'Resolution' },
+  { value: 'escalation_reason', label: 'Escalation reason' },
+  { value: 'user_context',      label: 'User context' },
+  { value: 'engineering_note',  label: 'Engineering note' },
+  { value: 'accounting_note',   label: 'Accounting note' },
+];
+
+const NOTE_TYPE_LABEL: Record<string, string> = NOTE_TYPE_OPTIONS.reduce(
+  (acc, o) => { acc[o.value] = o.label; return acc; },
+  {} as Record<string, string>,
+);
+
 
 // ─── Helper functions ─────────────────────────────────────────────────────────
 
@@ -463,7 +497,23 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
   const [activity, setActivity]         = useState<ActivityRow[]>([]);
   const [activityLoading, setActivityLoading] = useState(false);
 
-  useEffect(() => { setJsonExpanded(false); setActivity([]); }, [notif?.id]);
+  // Phase 5B: private notes state
+  const [notesAccess, setNotesAccess] = useState<'loading' | 'granted' | 'denied'>('loading');
+  const [notes, setNotes]             = useState<NoteRow[]>([]);
+  const [noteText, setNoteText]       = useState('');
+  const [noteType, setNoteType]       = useState('internal');
+  const [noteSubmitting, setNoteSubmitting] = useState(false);
+  const [noteError, setNoteError]     = useState('');
+
+  useEffect(() => {
+    setJsonExpanded(false);
+    setActivity([]);
+    setNotes([]);
+    setNotesAccess('loading');
+    setNoteText('');
+    setNoteType('internal');
+    setNoteError('');
+  }, [notif?.id]);
 
   // Phase 5A: Fetch activity timeline whenever drawer opens with a new notification
   useEffect(() => {
@@ -488,6 +538,68 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
     })();
     return () => { cancelled = true; };
   }, [notif?.id, getToken]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Phase 5B: Fetch private notes whenever drawer opens with a new notification.
+  // A 200 implies the caller is the assigned staff member or a superadmin (server-enforced).
+  // A 403 means access is denied — we surface a non-content message instead.
+  const loadNotes = useCallback(async (notifId: string) => {
+    const token = await getToken();
+    if (!token) return;
+    try {
+      const res = await fetch(`/api/admin/notifications/${notifId}/notes`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (res.status === 403) {
+        setNotesAccess('denied');
+        setNotes([]);
+        return;
+      }
+      if (!res.ok) {
+        setNotesAccess('denied');
+        return;
+      }
+      const json = await res.json() as { notes?: NoteRow[] };
+      setNotes(json.notes ?? []);
+      setNotesAccess('granted');
+    } catch {
+      setNotesAccess('denied');
+    }
+  }, [getToken]);
+
+  useEffect(() => {
+    if (!notif) return;
+    setNotesAccess('loading');
+    loadNotes(notif.id);
+  }, [notif?.id, loadNotes]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const submitNote = useCallback(async () => {
+    if (!notif) return;
+    const trimmed = noteText.trim();
+    if (!trimmed) return;
+    setNoteSubmitting(true);
+    setNoteError('');
+    try {
+      const token = await getToken();
+      if (!token) { setNoteError('Not authenticated'); return; }
+      const res = await fetch(`/api/admin/notifications/${notif.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note: trimmed, note_type: noteType }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({}));
+        setNoteError((j as { error?: string }).error ?? 'Failed to save note');
+        return;
+      }
+      setNoteText('');
+      setNoteType('internal');
+      await loadNotes(notif.id);
+    } catch {
+      setNoteError('Failed to save note');
+    } finally {
+      setNoteSubmitting(false);
+    }
+  }, [notif, noteText, noteType, getToken, loadNotes]);
 
   useEffect(() => {
     if (!notif) return;
@@ -691,6 +803,81 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
                     </span>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+
+          {/* Phase 5B: Private notes */}
+          <div>
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">Private notes</p>
+
+            {notesAccess === 'loading' && (
+              <div className="space-y-2">
+                {[1, 2].map(i => (
+                  <div key={i} className="h-12 rounded-lg bg-gray-50 animate-pulse" />
+                ))}
+              </div>
+            )}
+
+            {notesAccess === 'denied' && (
+              <p className="text-xs text-gray-400 italic">
+                Private notes visible to assigned staff and superadmin only.
+              </p>
+            )}
+
+            {notesAccess === 'granted' && (
+              <div className="space-y-3">
+                {/* Existing notes */}
+                {notes.length === 0 ? (
+                  <p className="text-xs text-gray-400">No notes yet. Add the first troubleshooting note below.</p>
+                ) : (
+                  <div className="space-y-2.5">
+                    {notes.map(n => (
+                      <div key={n.id} className="rounded-xl border border-gray-100 bg-gray-50 px-3.5 py-2.5">
+                        <div className="flex items-center justify-between gap-2 mb-1">
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-[10px] font-medium bg-indigo-100 text-indigo-700">
+                            {NOTE_TYPE_LABEL[n.note_type] ?? n.note_type}
+                          </span>
+                          <span className="text-[11px] text-gray-400 whitespace-nowrap">{timeAgo(n.created_at)}</span>
+                        </div>
+                        <p className="text-xs text-gray-700 leading-relaxed whitespace-pre-wrap break-words">{n.note}</p>
+                        <p className="text-[11px] text-gray-400 mt-1.5">— {n.author_name ?? 'Staff member'}</p>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Add-note form */}
+                <div className="rounded-xl border border-gray-200 bg-white p-3 space-y-2">
+                  <textarea
+                    value={noteText}
+                    onChange={(e) => setNoteText(e.target.value)}
+                    placeholder="Add an internal troubleshooting note…"
+                    rows={3}
+                    maxLength={5000}
+                    className="w-full text-xs text-gray-800 border border-gray-200 rounded-lg px-3 py-2 resize-y focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  />
+                  <div className="flex items-center gap-2">
+                    <select
+                      value={noteType}
+                      onChange={(e) => setNoteType(e.target.value)}
+                      className="flex-1 text-xs text-gray-700 border border-gray-200 rounded-lg px-2 py-1.5 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                      aria-label="Note type"
+                    >
+                      {NOTE_TYPE_OPTIONS.map(o => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      onClick={submitNote}
+                      disabled={noteSubmitting || !noteText.trim()}
+                      className="flex-shrink-0 px-3.5 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-blue-400"
+                    >
+                      {noteSubmitting ? 'Saving…' : 'Add note'}
+                    </button>
+                  </div>
+                  {noteError && <p className="text-[11px] text-rose-600">{noteError}</p>}
+                </div>
               </div>
             )}
           </div>
@@ -1133,6 +1320,20 @@ export default function AdminNotificationsPage() {
     if (n) handleOpenNotif(n);
   }, [items, handleOpenNotif]);
 
+  // Phase 5B: Open a specific notification when arriving via ?focus=<id>
+  // (e.g. the "Open" button on My Workbench). Runs once per focus id after items load.
+  const focusHandledRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (typeof window === 'undefined' || items.length === 0) return;
+    const focusId = new URLSearchParams(window.location.search).get('focus');
+    if (!focusId || focusHandledRef.current === focusId) return;
+    const target = items.find(x => x.id === focusId);
+    if (target) {
+      focusHandledRef.current = focusId;
+      handleOpenNotif(target);
+    }
+  }, [items, handleOpenNotif]);
+
   // ─────────────────────────────────────────────────────────────────────────
 
   return (
@@ -1376,9 +1577,9 @@ export default function AdminNotificationsPage() {
           <p>✅ <strong>Phase 4</strong> — Invoice created events, subscription payment_failed/cancelled events, cross-module audit</p>
           <p>✅ <strong>Phase 4.5</strong> — Severity visual hierarchy, critical pinning, card redesign, detail drawer, toasts, URL filter state, search, shimmer loading, premium empty states</p>
           <p>✅ <strong>Phase 5A</strong> — Workflow state machine (9 states), atomic claim/ownership, audit trail (notification_activity), status badges, activity timeline in drawer, resolve workflow</p>
-          <p>⏳ <strong>Phase 5B</strong> — Private staff notes, full activity timeline tabs</p>
+          <p>✅ <strong>Phase 5B</strong> — Private staff notes (notification_notes), My Workbench page, owner/superadmin note visibility, NOTE_ADDED activity enrichment</p>
           <p>⏳ <strong>Phase 5C</strong> — Escalation flow, superadmin reassign</p>
-          <p>⏳ <strong>Phase 5D</strong> — My Workbench page</p>
+          <p>⏳ <strong>Phase 5D</strong> — Workbench filters &amp; saved views</p>
           <p>⏳ <strong>Phase 6+</strong> — Email digests, Supabase Realtime push, mobile push (APNs/FCM), auto-escalation cron, AI clustering</p>
         </div>
 

@@ -44,6 +44,7 @@ const sidebarItems: AdminSidebarItem[] = [
   { label: 'Documents', href: '/admin/docs', icon: '📚' },
   { label: 'Feedback', href: '/admin/feedback', icon: '💬' },
   { label: 'Notifications', href: '/admin/notifications', icon: '🔔' },
+  { label: 'My Workbench', href: '/admin/workbench', icon: '🧰' },
   // REMOVED: Support (Support Inbox lives under Engineering)
   { label: 'Engineering', href: '/admin/engineering', icon: '🛠️' },
   { label: 'Accountant', href: '/admin/accountant', icon: '🧾' },
@@ -68,6 +69,7 @@ function getAdminTitle(pathname: string) {
   if (pathname.startsWith('/admin/docs')) return 'Documents';
   if (pathname.startsWith('/admin/feedback')) return 'Feedback';
   if (pathname.startsWith('/admin/notifications')) return 'Notifications';
+  if (pathname.startsWith('/admin/workbench')) return 'My Workbench';
   // REMOVED: /admin/support title mapping (Support now lives under /admin/engineering/*)
   if (pathname.startsWith('/admin/engineering')) return 'Engineering';
   if (pathname.startsWith('/admin/accountant')) return 'Accountant';
@@ -78,6 +80,8 @@ function getAdminTitle(pathname: string) {
 export default function AdminShell({ children }: AdminShellProps) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [adminUnread, setAdminUnread] = useState(0);
+  // Phase 5B: active items assigned to the current staff member (My Workbench badge)
+  const [workbenchCount, setWorkbenchCount] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -95,6 +99,13 @@ export default function AdminShell({ children }: AdminShellProps) {
         if (!res.ok || cancelled) return;
         const data: { count?: number } = await res.json();
         if (!cancelled) setAdminUnread(data.count ?? 0);
+        // Phase 5B: My Workbench active-item count (non-critical)
+        const wbRes = await fetch('/api/admin/workbench', {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!wbRes.ok || cancelled) return;
+        const wbData: { activeCount?: number } = await wbRes.json();
+        if (!cancelled) setWorkbenchCount(wbData.activeCount ?? 0);
       } catch {
         // Non-critical — badge stays at 0
       }
@@ -165,10 +176,18 @@ export default function AdminShell({ children }: AdminShellProps) {
                       {adminUnread > 9 ? '9+' : adminUnread}
                     </span>
                   )}
+                  {item.href === '/admin/workbench' && workbenchCount > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {workbenchCount > 9 ? '9+' : workbenchCount}
+                    </span>
+                  )}
                 </span>
               )}
               {!sidebarOpen && item.href === '/admin/notifications' && adminUnread > 0 && (
                 <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-red-500" />
+              )}
+              {!sidebarOpen && item.href === '/admin/workbench' && workbenchCount > 0 && (
+                <span className="absolute top-1 right-1 flex h-2 w-2 rounded-full bg-blue-500" />
               )}
             </Link>
           ))}
@@ -233,6 +252,11 @@ export default function AdminShell({ children }: AdminShellProps) {
                   {item.href === '/admin/notifications' && adminUnread > 0 && (
                     <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold leading-none text-white">
                       {adminUnread > 9 ? '9+' : adminUnread}
+                    </span>
+                  )}
+                  {item.href === '/admin/workbench' && workbenchCount > 0 && (
+                    <span className="ml-2 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-blue-500 px-1 text-[10px] font-bold leading-none text-white">
+                      {workbenchCount > 9 ? '9+' : workbenchCount}
                     </span>
                   )}
                 </span>
