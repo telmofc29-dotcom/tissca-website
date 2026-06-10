@@ -93,6 +93,25 @@ function getModuleConfig(module?: string) {
   return MODULE_CONFIG[module ?? ''] ?? { icon: '📩', badgeCls: 'bg-gray-100 text-gray-600', label: module ?? 'System' };
 }
 
+// ─── Platform configuration (mobile feedback visibility) ───────────────────────
+
+const PLATFORM_CONFIG: Record<string, { icon: string; label: string; badgeCls: string }> = {
+  web:     { icon: '🌐', label: 'Web',     badgeCls: 'bg-sky-100 text-sky-700' },
+  android: { icon: '🤖', label: 'Android', badgeCls: 'bg-green-100 text-green-700' },
+  ios:     { icon: '🍎', label: 'iOS',     badgeCls: 'bg-gray-100 text-gray-700' },
+  api:     { icon: '🔌', label: 'API',     badgeCls: 'bg-purple-100 text-purple-700' },
+};
+
+function getPlatformConfig(platform?: string) {
+  return PLATFORM_CONFIG[platform ?? ''] ?? null;
+}
+
+// Read the platform string from an event's metadata (feedback events carry it).
+function getEventPlatform(evt?: PlatformEvent | null): string | null {
+  const p = evt?.metadata?.platform;
+  return typeof p === 'string' ? p : null;
+}
+
 // ─── Severity configuration ───────────────────────────────────────────────────
 
 interface SeverityConfig {
@@ -332,6 +351,7 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen, onClaim, curre
   const wfCfg    = getWorkflowStatusConfig(wfStatus);
   const isAssignedToMe = !!currentUserId && notif.assigned_to === currentUserId;
   const isClaimedByOther = !!notif.assigned_to && notif.assigned_to !== currentUserId;
+  const platCfg  = getPlatformConfig(getEventPlatform(evt) ?? undefined);
 
   return (
     <div
@@ -369,6 +389,12 @@ function NotificationCard({ notif, onMarkRead, onDismiss, onOpen, onClaim, curre
           <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${mod.badgeCls}`}>
             {mod.label}
           </span>
+          {/* Mobile feedback: platform badge (Web/Android/iOS/API) */}
+          {platCfg && (
+            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${platCfg.badgeCls}`}>
+              <span aria-hidden="true">{platCfg.icon}</span>{platCfg.label}
+            </span>
+          )}
           {evt?.severity && evt.severity !== 'info' && (
             <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
               {sev.label}
@@ -619,6 +645,15 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
   const wfCfg           = getWorkflowStatusConfig(wfStatus);
   const isAssignedToMe  = !!currentUserId && notif.assigned_to === currentUserId;
 
+  // Mobile feedback: device context from event metadata (shown only when present)
+  const meta            = (evt?.metadata ?? {}) as Record<string, unknown>;
+  const platCfg         = getPlatformConfig(getEventPlatform(evt) ?? undefined);
+  const metaStr = (key: string): string | null => {
+    const v = meta[key];
+    return typeof v === 'string' && v.trim() !== '' ? v : (typeof v === 'number' ? String(v) : null);
+  };
+  const screenshotsCount = typeof meta.screenshots_count === 'number' ? meta.screenshots_count : null;
+
   const metaFields: Array<{ label: string; value: string | null | undefined; mono?: boolean; truncate?: boolean }> = [
     { label: 'Occurred',    value: evt?.occurred_at ? new Date(evt.occurred_at).toLocaleString('en-GB') : null },
     { label: 'Received',    value: notif.created_at ? new Date(notif.created_at).toLocaleString('en-GB') : null },
@@ -631,6 +666,13 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
     { label: 'Status',      value: notif.is_read ? 'Read' : 'Unread' },
     { label: 'Workflow',    value: wfCfg.label },
     { label: 'Owner',       value: notif.assigned_to_name ?? (notif.assigned_to ? 'Staff member' : null) },
+    // Mobile feedback device context (null values are filtered out before render)
+    { label: 'Platform',      value: platCfg ? `${platCfg.icon} ${platCfg.label}` : null },
+    { label: 'App version',   value: metaStr('app_version') },
+    { label: 'Build number',  value: metaStr('build_number') },
+    { label: 'OS version',    value: metaStr('os_version') },
+    { label: 'Device model',  value: metaStr('device_model') },
+    { label: 'Screenshots',   value: screenshotsCount && screenshotsCount > 0 ? String(screenshotsCount) : null },
   ];
 
   return (
@@ -658,6 +700,12 @@ function DetailDrawer({ notif, onClose, onMarkRead, onDismiss, onResolve, curren
                 <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium ${mod.badgeCls}`}>
                   {mod.label}
                 </span>
+                {/* Mobile feedback: platform badge (Web/Android/iOS/API) */}
+                {platCfg && (
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${platCfg.badgeCls}`}>
+                    <span aria-hidden="true">{platCfg.icon}</span>{platCfg.label}
+                  </span>
+                )}
                 {evt?.severity && evt.severity !== 'info' && (
                   <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-semibold ${sev.badgeBg} ${sev.badgeText}`}>
                     {sev.label}

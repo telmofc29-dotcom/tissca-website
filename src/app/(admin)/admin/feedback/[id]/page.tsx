@@ -239,6 +239,9 @@ export default function AdminFeedbackDetailPage({ params }: PageProps) {
                     {feedback.os_version && (
                       <span className="ml-2 text-gray-500">{feedback.os_version}</span>
                     )}
+                    {feedback.device_model && (
+                      <span className="ml-2 text-gray-500">· {feedback.device_model}</span>
+                    )}
                   </p>
                   {feedback.alpha_tester && (
                     <p>
